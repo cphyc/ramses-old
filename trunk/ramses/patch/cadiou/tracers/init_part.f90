@@ -2,6 +2,7 @@ subroutine init_part
   use amr_commons
   use pm_commons
   use clfind_commons
+  use random
 
 #ifdef RT
   use rt_parameters,only: convert_birth_times
@@ -58,6 +59,7 @@ subroutine init_part
   integer,parameter::tagg=1109,tagg2=1110,tagg3=1111
   integer::dummy_io,info2
 
+  integer ,dimension(1:ncpu,1:IRandNumSize) :: allseed
 
   if(verbose)write(*,*)'Entering init_part'
 
@@ -214,7 +216,14 @@ subroutine init_part
      end select
 
      ! Initialize tracer particles
-     if(MC_tracer) call load_tracers
+     if(MC_tracer) then
+        call load_tracers
+        if(localseed(1)==-1)then
+           call rans(ncpu, iseed, allseed)
+           localseed = allseed(myid, 1:IRandNumSize)
+        end if
+     end if
+
   end if
 
   if(sink)call init_sink

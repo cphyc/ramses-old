@@ -514,9 +514,9 @@ subroutine godfine1(ind_grid, ncache, ilevel, flux)
            nexist=nexist+1
            ind_exist(nexist)=i
         else
-          nbuffer=nbuffer+1
-          ind_nexist(nbuffer)=i
-          ind_buffer(nbuffer)=nbors_father_cells(i,ind_father)
+           nbuffer=nbuffer+1
+           ind_nexist(nbuffer)=i
+           ind_buffer(nbuffer)=nbors_father_cells(i,ind_father)
         end if
      end do
 
