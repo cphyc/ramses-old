@@ -198,10 +198,6 @@ subroutine move1(ind_grid, ind_part, ind_grid_part, ng, np, ilevel, flux)
   integer , dimension(1:nvector, 1:twotondim), save :: igrid, icell, indp, kg
   real(dp), dimension(1:3) :: skip_loc
 
-  ! Loop indexes
-  integer :: ii1, ii2, jj1, jj2, kk1, kk2, ii, jj, kk
-  real(dp), dimension(1:nvector) :: outflux, mass_of_cell
-  real(dp) :: proba, rand
   ! Mesh spacing in that level
   dx = 0.5D0**ilevel
   nx_loc = (icoarse_max - icoarse_min + 1)
@@ -497,80 +493,6 @@ subroutine move1(ind_grid, ind_part, ind_grid_part, ng, np, ilevel, flux)
      end do
   end do
 
-  ! Update position for MC tracers
-  mass_of_cell = 0d0
-  if (MC_tracer) then
-     do j = 1, np
-        if (mp(ind_part(j)) > 0d0) then
-           cycle
-        end if
-        ! Move tracer part following the flux
-        ii1=0; jj1=0; kk1=0 ! TODO define them depending on whether we're on the right side of the grid or left side
-        ii2=0; jj2=0; kk2=0
-        if (ndim > 0) ii2 = 2
-        if (ndim > 1) jj2 = 2
-        if (ndim > 2) kk2 = 2
-
-        outflux(j) = 0d0
-        ! Compute the total outgoing flux
-        do kk = kk1, kk2
-        do jj = jj1, jj2
-        do ii = ii1, ii2
-           do idim = 1, ndim
-              ! TODO: don't iterate over kk1,kk2, jj1... but only on the face of
-              ! the particles' cell
-              if (flux(ind_grid_part(j), ii, jj, kk, 1, idim) > 0) &
-                   outflux(j) = outflux(j) + flux(ind_grid_part(j), ii, jj, kk, 1, idim)
-           end do
-        end do
-        end do
-        end do
-
-        ! Break if no outflux in this cell
-        if (outflux(j) == 0d0) continue
-
-        proba = outflux(j) * dtnew(ilevel) / uold(ind_grid(ind_grid_part(j)), 1)
-
-        ! Decide randomly if we move the particle
-        call ranf(localseed, rand)
-        if (rand < proba) then
-           ! Ok, I'm moving it. Which direction ?
-           call ranf(localseed, rand)
-           break_now = .false.
-           do kk = kk1, kk2
-              do jj = jj1, jj2
-                 do ii = ii1, ii2
-                    if (break_now) continue
-                    ! TODO: don't iterate over kk1, kk2, jj1... but only on the face of
-                    ! the particles' cell
-                    do idim = 1, ndim
-                       proba = flux(ind_grid_part(j), ii, jj, kk, 1, idim) * dtnew(ilevel) &
-                            / uold(ind_grid(ind_grid_part(j)), 1)
-                       if (rand < proba) then
-                          ! now find the center of neighbour cell
-                          igrid_nbor = son(nbors_father_cells(j, ind_father))
-
-                          if (igrid_nbor == 0) then
-                             new_xp(j, :) = (/ 0d0, 0d0, 0d0 /) ! TODO: location of the center of neighbour cell
-                          else
-                             ! TODO: descend the tree and pick a cell to put the particle into
-                          end if
-                          break_now = .true.
-                          exit
-                       else
-                          ! decrease the random number, because P(switch to any) = 1
-                          rand = rand - proba
-                       end if
-                    end do
-                 end do
-                 if (break_now) exit
-              end do
-              if (break_now) exit
-           end do
-        end if
-     end do
-  end if
-
   do idim = 1, ndim
      if(static)then
         do j = 1, np
@@ -579,7 +501,7 @@ subroutine move1(ind_grid, ind_part, ind_grid_part, ng, np, ilevel, flux)
      else
         do j = 1, np
            if (MC_tracer .and. mp(ind_part(j)) == 0d0) then
-              ! do nothing, already moved
+              ! do nothing, already moved in godunov file
            else
               new_xp(j, idim) = xp(ind_part(j), idim) + new_vp(j, idim)*dtnew(ilevel)
            end if
