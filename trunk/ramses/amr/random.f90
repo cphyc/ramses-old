@@ -65,7 +65,7 @@ contains
     real(kind=8) :: RandNum, GaussNum
 
     if(AverNum <= DBLE(NPoissonLimit)) then
-       Norm=exp(-AverNum) 
+       Norm=exp(-AverNum)
        Repar=1.0d0
        PoissNum=0
        Proba=1.0d0

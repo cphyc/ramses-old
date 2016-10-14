@@ -147,7 +147,7 @@ recursive subroutine amr_step(ilevel,icount)
         call dump_all
 
         ! Run the clumpfinder, (produce output, don't keep arrays alive on output)
-        ! CAREFUL: create_output is used to destinguish between the case where 
+        ! CAREFUL: create_output is used to destinguish between the case where
         ! the clumpfinder is called from create_sink or directly from amr_step.
         if(clumpfind .and. ndim==3) call clump_finder(.true.,.false.)
 
@@ -169,7 +169,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Output frame to movie dump (without synced levels)
   !----------------------------
   if(movie) then
-     if(imov.le.imovout)then 
+     if(imov.le.imovout)then
         if(aexp>=amovout(imov).or.t>=tmovout(imov))then
            call timer('io','start')
            call output_frame()
@@ -312,7 +312,7 @@ recursive subroutine amr_step(ilevel,icount)
         else
            call amr_step(ilevel+1,1)
         endif
-     else 
+     else
         ! Otherwise, update time and finer level time-step
         dtold(ilevel+1)=dtnew(ilevel)/dble(nsubcycle(ilevel))
         dtnew(ilevel+1)=dtnew(ilevel)/dble(nsubcycle(ilevel))
@@ -366,7 +366,7 @@ recursive subroutine amr_step(ilevel,icount)
      call set_uold(ilevel)
 
      ! Add gravity source term with half time step and old force
-     ! in order to complete the time step 
+     ! in order to complete the time step
      call timer('poisson','start')
      if(poisson)call synchro_hydro_fine(ilevel,+0.5*dtnew(ilevel))
 
@@ -380,7 +380,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Do RT/Chemistry step
   !---------------------
 #ifdef RT
-  if(rt .and. rt_advect) then  
+  if(rt .and. rt_advect) then
      call timer('radiative transfer','start')
      call rt_step(ilevel)
   else
@@ -530,7 +530,7 @@ subroutine rt_step(ilevel)
   !  Radiative transfer and chemistry step. Either do one step on ilevel,
   !  with radiation field updates in coarser level neighbours, or, if
   !  rt_nsubsteps>1, do many substeps in ilevel only, using Dirichlet
-  !  boundary conditions for the level boundaries. 
+  !  boundary conditions for the level boundaries.
   !--------------------------------------------------------------------------
 
   real(dp) :: dt_hydro, t_left, dt_rt, t_save
@@ -550,7 +550,7 @@ subroutine rt_step(ilevel)
      dtnew(ilevel) = MIN(t_left, dt_rt/2.0**(ilevel-levelmin))
      t = t + dtnew(ilevel) ! Shift the time forwards one dt_rt
 
-     ! If (myid==1) write(*,900) dt_hydro, dtnew(ilevel), i_substep, ilevel    
+     ! If (myid==1) write(*,900) dt_hydro, dtnew(ilevel), i_substep, ilevel
      if (i_substep > 1) call rt_set_unew(ilevel)
 
      if(rt_star) call star_RT_feedback(ilevel,dtnew(ilevel))

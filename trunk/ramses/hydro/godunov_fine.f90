@@ -593,7 +593,7 @@ subroutine godfine1(ind_grid,ncache,ilevel)
   call unsplit(uloc,gloc,flux,tmp,dx,dx,dx,dtnew(ilevel),ncache)
 
   !------------------------------------------------
-  ! Reset flux along direction at refined interface    
+  ! Reset flux along direction at refined interface
   !------------------------------------------------
   do idim=1,ndim
      i0=0; j0=0; k0=0

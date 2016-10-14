@@ -2,14 +2,14 @@
 # If you have problems with this makefile, contact Romain.Teyssier@gmail.com
 #############################################################################
 # Compilation time parameters
-NVECTOR = 32
-NDIM = 1
+NVECTOR = 500
+NDIM = 3
 NPRE = 8
-NVAR = 5
+NVAR = 6
 NENER = 0
 SOLVER = hydro
-PATCH = 
-EXEC = ramses
+PATCH = /home/cadiou/data/ramses/trunk/ramses/patch/cadiou/tracers
+EXEC = ramses_dice
 #############################################################################
 GITBRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 GITHASH = $(shell git log --pretty=format:'%H' -n 1)
@@ -21,8 +21,8 @@ DEFINES = -DNVECTOR=$(NVECTOR) -DNDIM=$(NDIM) -DNPRE=$(NPRE) -DNENER=$(NENER) -D
 # Fortran compiler options and directives
 
 # --- No MPI, gfortran -------------------------------
-F90 = gfortran -O3 -frecord-marker=4 -fbacktrace -ffree-line-length-none -g
-FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
+#F90 = gfortran -O3 -frecord-marker=4 -fbacktrace -ffree-line-length-none -g
+#FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 
 # --- No MPI, tau ----------------------------------
 #F90 = tau_f90.sh -optKeepFiles -optPreProcess -optCPPOpts=$(DEFINES) -DWITHOUTMPI
@@ -43,30 +43,38 @@ FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 #F90 = ifort
 #FFLAGS = -cpp $(DEFINES) -DWITHOUTMPI
 
-# --- MPI, gfortran syntax ------------------------------
-#F90 = mpif90 -frecord-marker=4 -O3 -ffree-line-length-none -g -fbacktrace 
+# --- MPI, gfortran syntax ---------------------------
+#F90 = mpif90 -frecord-marker=4 -O3 -ffree-line-length-none -g -fbacktrace
 #FFLAGS = -x f95-cpp-input $(DEFINES)
 
-# --- MPI, gfortran DEBUG syntax ------------------------------ 
+# --- MPI, gfortran DEBUG syntax ---------------------
 #F90 = mpif90 -frecord-marker=4 -ffree-line-length-none -fbacktrace -g -O -fbounds-check -Wuninitialized -Wall
-#FFLAGS = -x f95-cpp-input -ffpe-trap=zero,underflow,overflow,invalid -finit-real=nan  $(DEFINES)    
+#FFLAGS = -x f95-cpp-input -ffpe-trap=zero,underflow,overflow,invalid -finit-real=nan  $(DEFINES)
 
 # --- MPI, pgf90 syntax ------------------------------
 #F90 = mpif90 -O3
 #FFLAGS = -Mpreprocess $(DEFINES)
 
 # --- MPI, ifort syntax ------------------------------
-#F90 = mpif90
-#FFLAGS = -cpp -fast $(DEFINES) -DNOSYSTEM
+# F90 = mpif90
+# FFLAGS = -cpp -fast $(DEFINES) -DNOSYSTEM -traceback -g
+
+# --- MPI, ifort syntax, no SSE ----------------------
+# F90 = mpif90
+# FFLAGS = -cpp -Ofast -static $(DEFINES) -DNOSYSTEM
+
+# --- MPI, ifort syntax, SSE3 ----------------------
+# F90 = mpif90
+# FFLAGS = -cpp -fast -xSSE3 $(DEFINES) -DNOSYSTEM
 
 # --- MPI, ifort syntax, additional checks -----------
-#F90 = mpif90
-#FFLAGS = -warn all -O0 -g -traceback -fpe0 -ftrapuv -check bounds -cpp $(DEFINES) -DNOSYSTEM
+F90 = mpif90
+FFLAGS = -warn all -O0 -g -traceback -fpe0 -ftrapuv -check bounds -cpp $(DEFINES) -DNOSYSTEM
 
 
 # --- MPI, ifort syntax ------------------------------
 #F90 = ftn
-#FFLAGS = -xAVX -g -traceback -fpp -fast $(DEFINES) -DNOSYSTEM #-DRT 
+#FFLAGS = -xAVX -g -traceback -fpp -fast $(DEFINES) -DNOSYSTEM #-DRT
 
 # --- MPI, ifort syntax, additional checks -----------
 #F90 = ftn
@@ -76,7 +84,7 @@ FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 MOD = mod
 #############################################################################
 # MPI librairies
-LIBMPI = 
+LIBMPI =
 #LIBMPI = -lfmpi -lmpi -lelan
 
 # --- CUDA libraries, for Titane ---
@@ -124,7 +132,7 @@ ramses_aton: $(MODOBJ) $(ATON_MODOBJ) $(AMRLIB) $(ATON_OBJ) ramses.o
 #############################################################################
 write_gitinfo.o: FORCE
 	$(F90) $(FFLAGS) -DPATCH=\'$(PATCH)\' -DGITBRANCH=\'$(GITBRANCH)\' -DGITHASH=\'"$(GITHASH)"\' \
- -DGITREPO=\'$(GITREPO)\' -DBUILDDATE=\'"$(BUILDDATE)"\' -c ../amr/write_gitinfo.f90 -o $@		
+ -DGITREPO=\'$(GITREPO)\' -DBUILDDATE=\'"$(BUILDDATE)"\' -c ../amr/write_gitinfo.f90 -o $@
 write_makefile.o: FORCE
 	../utils/scripts/cr_write_makefile.sh $(MAKEFILE_LIST)
 	$(F90) $(FFLAGS) -c write_makefile.f90 -o $@

@@ -369,7 +369,7 @@ subroutine getnborcells(igridn,ind,icelln,ng)
   !--------------------------------------------------------------
   ! This routine computes the index of 6-neighboring cells
   ! The user must provide igridn = index of the 6 neighboring
-  ! grids and the cell's grid (see routine getnborgrids). 
+  ! grids and the cell's grid (see routine getnborgrids).
   ! ind is the cell index in the grid.
   !--------------------------------------------------------------
   integer::i,in,ig,ih,iskip
@@ -409,8 +409,8 @@ subroutine getnborfather(ind_cell,ind_father,ncell,ilevel)
   integer,dimension(1:nvector,0:twondim)::ind_father
   !-----------------------------------------------------------------
   ! This subroutine determines the 2*ndim neighboring cells
-  ! cells of the input cell (ind_cell). 
-  ! If for some reasons they don't exist, the routine returns 
+  ! cells of the input cell (ind_cell).
+  ! If for some reasons they don't exist, the routine returns
   ! the neighboring father cells of the input cell.
   !-----------------------------------------------------------------
   integer::nxny,i,idim,j,iok,ind
@@ -477,7 +477,7 @@ subroutine getnborfather(ind_cell,ind_father,ncell,ilevel)
      do i=1,ncell
         pos(i)=(ind_father(i,0)-ncoarse-1)/ngridmax+1
      end do
-     
+
      ! Get father grid
      do i=1,ncell
         ind_grid_father(i)=ind_father(i,0)-ncoarse-(pos(i)-1)*ngridmax

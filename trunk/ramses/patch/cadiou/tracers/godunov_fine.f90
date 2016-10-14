@@ -795,11 +795,13 @@ subroutine godfine1(ind_grid, ncache, ilevel)
 
 end subroutine godfine1
 
-subroutine move_tracers_oct(oct, flux, xnew)
-  implicit none
-
+subroutine move_tracers_oct(octs, fluxes, xnew)
   use amr_parameters
+  use amr_commons
+  use pm_commons
   use random
+
+  implicit none
 
   integer,dimension(1:nvector), intent(in)   :: octs
   real(dp),dimension(:,:,:,:,:,:), intent(in):: fluxes
@@ -810,125 +812,159 @@ subroutine move_tracers_oct(oct, flux, xnew)
   ! Implement a Monte Carlo sampling of the gas properties following
   ! the fluxes of mass from oct to oct.
   !-------------------------------------------------------------------
-  integer :: dir, noct, i, icell, ipart
-  real(dp) :: Ftot, rand, prop
-  integer,dimension(1:twotondim/2)::icells
-  logical :: stop_now
+  integer,dimension(1:nvector,0:twondim) :: nocts
+  integer :: oct, noct
+  integer :: dir, i, j, k, icell, ipart, npart_max, twondimm2
+  real(dp) :: Ftot, rand, prop, flux
+  real(dp), dimension(1:twotondim) :: Fout, scale
+  integer,dimension(1:twondim-2) :: icells
 
+  twondimm2 = twondim-2
   ! Take care of the neighbour octs, moving into current one the particles
   ! listed as getting out at a coarser level
 
-  do dir = 1, 2*ndim
-     noct = getNeighbour(oct, dir)
-     if (son(noct) == 0) then
-        ! Compute the flux into oct from noct
-        Ftot = 0
-        icells = getCellsInDir(oct, dir)
-        do i = 1, twotondim/2
-           icell = icells(i)
-           Ftot = Ftot + maxval(0, getFlux(dir, icell, fluxes))
-        end do
+  ! Iterate over neighbour of father grid
+  call getnborgrid(octs, nocts, nvector)
+  do i = 1, nvector
+     !------------------------------------------
+     ! Get particles from neighbour oct
+     !------------------------------------------
+     do dir = 1, twondim
+        oct = octs(i)
+        noct = nocts(i, dir)
 
-        ! Get the head of the linked list of particles going from noct to oct
-        ipart = headp_out(noct, dir)
-        do while (ipart > 0)
-           call ranf(localseed, rand)
-           stop_now = .false.
-
-           ! Iterate over all neighbour cell to find one that'll host the tracer
-           do i = 1, twotondim/2
-              icell = icells(i)
-              prop = max(0, getFlux(dir, icell, fluxes) / Ftot)
-
-              if (rand < prop) then
-                 xnew(ipart) = cellCenter(oct, icell)
-                 exit ! stop loop on cells in direction
-              else
-                 rand = rand - prop
-              end if
+        if (son(noct) == 0) then
+           ! Compute the flux into oct from noct
+           Ftot = 0
+           icells(1:twondimm2) = getCellsInDir(oct, dir)
+           do j = 1, twondimm2
+              Ftot = Ftot + max(0, getFlux(dir, icells(j), fluxes(i, :, :, :, :, :)))
            end do
 
-           ! Get next particle
-           ipart = nextp_out(ipart)
-        end do
-     end if
-  end do
+           ! Get the head of the linked list of particles going from noct to oct
+           ipart = headtout(noct, dir)
+           npart_max = numbtout(noct, dir)
+           do j = 1, npart_max
+              call ranf(localseed, rand)
 
-  ! Now move particles within oct
-  do icell = 1, twotondim
-     Ftot = 0
+              ! Iterate over all cell in direction dir to locate tracer particle
+              do k = 1, twondimm2
+                 prop = max(0, getFlux(dir, icells(k), fluxes(i, :, :, :, :, :)) / Ftot)
 
-     ! Compute the flux from oct to the outside
-     do dir = 1, 2*ndim
-        Ftot = Ftot + min(0, getFlux(dir, icell, fluxes))
+                 if (rand < prop) then
+                    xnew(ipart) = cellCenter(oct, icell)
+                    exit ! stop loop on cells in direction
+                 else
+                    rand = rand - prop
+                 end if
+              end do
+
+              ! Get next particle
+              ipart = nextp(ipart)
+           end do
+        end if
      end do
 
-     scale = -getMass(oct, icell) / dtnew
+     !------------------------------------------
+     ! Move particles from oct
+     !------------------------------------------
+     ! Iterate over all cells of oct
+     do icell = 1, twotondim
+        Fout = 0
+
+        ! Compute the flux out of cell
+        do dir = 1, 2*ndim
+           Fout(dir) = Fout(dir) + min(0, getFlux(dir, icell, fluxes(i, :, :, :, :, :)))
+        end do
+
+        scale = -getMass(oct, icell) ! TODO: / dtnew ?
+     end do
 
      ! Iterate over particles in oct
      ipart = headp(oct)
      npart = numbp(oct)
-     do j = 1, npart
-        call ranf(localseed, rand)
-        ! Randomly decide whether or not to move it
-        if (rand < Ftot / scale) then
+
+     if (npart > 0) then
+        do j = 1, npart
            call ranf(localseed, rand)
-           do dir = 1, 2*ndim
-              flux = getFlux(dir, icell, fluxes) ! negative for outgoing fluxes
-              if (rand < flux / scale) then
-                 ! 3 cases:
-                 ! - (1) the neighbour in direction is from the same oct
-                 ! - no neighbour in oct then, the neighbour oct 'noct' is either:
-                 !   * (2) unrefined, then place part at center of it
-                 !   * (3) refined at same level as oct, place the particle in direct neighbouring cell
-                 !   * (4) refined at a deeper level, store the particle for later use (will be called at next level)
-                 if (getSide(icell) /= dir) then                    ! case (1)
-                    nicell = negIcell(dir, icell)
-                    xnew(ipart) = cellCenter(oct, nicell)
-                 else
-                    noct = getNeighbour(oct, dir)
-                    if (son(noct) == 0) then                        ! case (2)
-                       parent_noct = father(noct)
-                       ! get the index of the cell that is the neighbour oct: TODO
-                       nicell = noct ! TODO
-                       xnew(ipart) = cellCenter(parent_noct, nicell)
-                    else
+           ! Randomly decide whether or not to move it
+           if (rand < Fout(j) / scale) then
+              call ranf(localseed, rand)
+
+              do dir = 1, 2*ndim
+                 flux = getFlux(dir, icell, fluxes) ! negative for outgoing fluxes
+                 if (rand < flux / scale) then
+                    ! 3 cases:
+                    ! - (1) the neighbour in direction is from the same oct
+                    ! - no neighbour in oct then, the neighbour oct 'noct' is either:
+                    !   * (2) unrefined, then place part at center of it
+                    !   * (3) refined at same level as oct, place the particle in direct neighbouring cell
+                    !   * (4) refined at a deeper level, store the particle for later use (will be called at next level)
+                    if (getSide(icell) /= dir) then                    ! case (1)
                        nicell = negIcell(dir, icell)
-                       nnoct = getOct(oct, nicell)
-                       if (son(nnoct) == 0) then                    ! case(3)
-                          xnew(ipart) = cellCenter(noct, nicell)
-                       else                                         ! case(4)
-                          call attachParticle(oct, dir, ipart)
+                       xnew(ipart) = cellCenter(oct, nicell)
+                    else
+                       noct = getNeighbour(oct, dir)
+                       if (son(noct) == 0) then                        ! case (2)
+                          parent_noct = father(noct)
+                          ! get the index of the cell that is the neighbour oct: TODO
+                          nicell = noct ! TODO
+                          xnew(ipart) = cellCenter(parent_noct, nicell)
+                       else
+                          nicell = negIcell(dir, icell)
+                          nnoct = getOct(oct, nicell)
+                          if (son(nnoct) == 0) then                    ! case(3)
+                             xnew(ipart) = cellCenter(noct, nicell)
+                          else                                         ! case(4)
+                             call attachParticle(oct, dir, ipart)
+                          end if
                        end if
                     end if
+                 else
+                    rand = rand + min(0, flux) ! flux is < 0 !
                  end if
-              else
-                 rand = rand + min(0, flux) ! flux is < 0 !
-              end if
-           end do
-        end if
-        ipart = nextp(ipart)
-     end do
+              end do
+           end if
+           ipart = nextp(ipart)
+        end do
+     end if
+     
   end do
+
 contains
   function getNeighbour(oct, dir) result (noct)
-    integer, intent(in) :: oct, dir
+    integer, dimension(1:nvector), intent(in) :: oct
+    integer, intent(in) :: dir
 
     ! Output
-    integer :: noct
+    integer, dimension(1:nvector,1:twotondim) :: noct
 
     ! TODO
     noct = 0
 
   end function getNeighbour
 
-  function getFlux (dir, icell, fluxes) result(flux)
+  function getFlux(dir, icell, fluxes) result(flux)
     real(dp) :: flux
-    integer, intent(in)  :: dir, icell
-    real(dp), intent(in) :: fluxes
 
-    ! TODO
-    flux = 0
+    integer, intent(in)  :: dir, icell ! icell is 1, 2, ... 8
+    real(dp), intent(in) :: fluxes(:,:,:,:,:)
+
+    integer :: sign ! this is the sign to get fluxes from cell out of it
+    integer :: ii, jj, kk, dim
+
+    ! the sign is +1 when the direction is 1, 3, 5
+    ! the sign is -1 when the direction is 2, 4, 6
+    sign = 1
+    if (mod(dir, 2) == 0) sign = -1
+    dim = dir / 3 ! so that 1,2 -> 1 & 3,4 -> 2 & 4,5 -> 3
+
+    ! get the index in flux
+    kk = icell / 4
+    jj = (icell - 4*k) / 2
+    ii = icell - 4*k - 2*j
+    flux = sign*fluxes(ii, jj, kk, 1, dir)
+
   end function getFlux
 
   function cellCenter(oct, icell)
@@ -939,7 +975,7 @@ contains
     cellCenter =(/0, 0, 0/)
   end function cellCenter
 
-   function getMass (oct, icell) result(mass)
+  function getMass (oct, icell) result(mass)
     real(dp) :: mass
     integer, intent(in)  :: oct, icell
 
@@ -952,5 +988,24 @@ contains
 
     ! TODO
   end subroutine attachParticle
+
+  function getCellsInDir(oct, dir) result(icells)
+    integer, intent(in) :: oct, dir
+    integer, dimension(1:2*(ndim-1)) :: icells
+
+    integer, dimension(1:4,1:6), save :: ccc
+
+    ccc(1:4,1) = (/1, 3, 5, 7/)
+    ccc(1:4,2) = (/2, 4, 6, 8/)
+    ccc(1:4,3) = (/1, 2, 5, 6/)
+    ccc(1:4,4) = (/3, 4, 7, 8/)
+    ccc(1:4,5) = (/1, 2, 3, 4/)
+    ccc(1:4,6) = (/5, 6, 7, 8/)
+
+    ! TODO : compute the absolute location of cell, not relative
+    iskip = ncoarse + (ccc(:, dir) - 1)*ngridmax
+    icells(1:4) = oct + iskip
+
+  end function getCellsInDir
 
 end subroutine move_particles_oct
