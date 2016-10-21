@@ -4,6 +4,7 @@
 !###########################################################
 subroutine godunov_fine(ilevel)
   use amr_commons
+  use pm_commons, only: move_flag
   use hydro_commons
   implicit none
   integer::ilevel
@@ -22,6 +23,9 @@ subroutine godunov_fine(ilevel)
 
   ! Loop over active grids by vector sweeps
   ncache=active(ilevel)%ngrid
+  
+  if (MC_tracer) move_flag = .true.
+
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -799,15 +803,15 @@ end subroutine godfine1
 
 subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   use amr_parameters      ! nx, ny, nz, dp, ngridmax, nvector, …
-  use amr_commons, only   : ncoarse, father
-  use pm_commons, only    : xp, headp, mp, localseed, numbp, nextp
+  use amr_commons, only   : ncoarse, father, xg, son
+  use pm_commons, only    : xp, headp, mp, localseed, numbp, nextp, move_flag
   use random, only        : ranf
   use hydro_commons, only : uold, if1, if2, jf1, jf2, kf1, kf2, nvar
 
   implicit none
 
   integer,dimension(1:nvector), intent(in)   :: ind_grid
-  real(dp),dimension(1:nvector,if1:if2,jf1:jf2,kf1:kf2,1:nvar,1:ndim),intent(in)::fluxes
+  real(dp),dimension(1:nvector, if1:if2, jf1:jf2, kf1:kf2, 1:nvar, 1:ndim),intent(in)::fluxes
   integer, intent(in) :: ilevel
 
   !-------------------------------------------------------------------
@@ -820,17 +824,32 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   integer,dimension(1:nvector, 1:twotondim, 0:twondim) :: ind_ncell
   integer,dimension(1:nvector, 0:twondim) :: tmp_ncell
 
-  integer :: i, j, k, dir, dim, ison, iskip, icell, ficell, ncell, ipart, new_icell, ix, iy, iz
+  integer :: i, j, k, dir, dim, ison, iskip, icell, igrid_cell, ficell, ncell, ipart, new_icell, ix, iy, iz
   integer :: ixnc, iync, iznc
-  real(kind=dp), dimension(1:3) :: xg
-  integer :: dim0, nxny, dirm2
+  integer :: dim0, nxny, dirm2, nx_loc
+  real(kind=dp) :: scale, dx
+  real(kind=dp), dimension(1:3) :: x, xbound, skip_loc
 
+  ! integer, save :: ncall = 0
+
+  ! ncall = ncall + 1
+  ! write(*, '(a,i3,a)') '===', ncall, "'th call of move_tracers_oct"
   nxny = nx*ny
+
+  scale = boxlen/dble(nx_loc)
+  dx = 0.5D0**ilevel
+  xbound(1:3)=(/dble(nx),dble(ny),dble(nz)/)
+  nx_loc=(icoarse_max-icoarse_min+1)
+  skip_loc=(/0.0d0, 0.0d0, 0.0d0/)
+  if(ndim>0) skip_loc(1) = dble(icoarse_min)
+  if(ndim>1) skip_loc(2) = dble(jcoarse_min)
+  if(ndim>2) skip_loc(3) = dble(kcoarse_min)
+  scale = boxlen/dble(nx_loc)
 
   ! Iterate over neighbour of father grid
   call getnborgrids(ind_grid, ind_ngrid, nvector)
 
-  ! Precompute the neighbors of each cell of each grid
+  ! Precompute the indexes of the cells of each grid
   do j = 1, nvector
      do i = 1, twotondim
         iskip = ncoarse + (i - 1)*ngridmax
@@ -846,33 +865,64 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
      end do
   end do
 
+
+  ! do j = 1, nvector
+  !    write(*, '(i4, 2x, 2(f8.5, 2x), i4)') ind_grid(j), xg(ind_grid(j), :), numbp(ind_grid(j))
+  ! end do
+
+  ! do j = 1, nvector
+  !    print*, 'Grid j  ', j, ind_grid(j)
+  !    print*, 'position', xg(ind_grid(j), :)
+  !    ipart = headp(ind_grid(j))
+  !    do i = 1, numbp(ind_grid(j))
+  !       print*, ipart, xp(ipart, :)
+  !       ipart = nextp(ipart)
+  !    end do
+  ! end do
+
   do j = 1, nvector
      ! Loop over all particles
      ipart = headp(ind_grid(j))
+     ! print*, '==================== new grid', ind_grid(j)
 
      do i = 1, numbp(ind_grid(j))
+        ! print*, "   >> Particle", ipart, xp(ipart, :)
         ! Skip already moved particles
         ! .not. tracer_moved(ipart)
-        if (mp(ipart) == 0d0) then
+
+        ! print*, 'part  ', ipart, ind_grid(j), move_flag(ipart)
+
+        if (mp(ipart) == 0d0 .and. move_flag(ipart)) then
+
            ! Find cell in which the particle is
            ! see amr/refine_utils.f90:202
-           ix = 0; iy = 0; iz = 0
-           ix = xp(ipart, 1) - 0.5d0
-           if (ndim > 1) iy = xp(ipart, 2) - 0.5d0
-           if (ndim > 2) iz = xp(ipart, 3) - 0.5d0
+           ix = 1; iy = 1; iz = 1
+           do dim = 1, ndim
+              x(dim) = (xp(ipart, dim) / scale + skip_loc(dim) - xg(ind_grid(j), dim))/dx + 1.5d0
+              ! print*, 'x(dim)', x(dim), ind_grid(j)
+           end do
 
-           ison = 1 + ix + nx*iy + nxny*iz
+           ix = x(1)
+#IF NDIM > 1
+           iy = x(2)
+#ENDIF
+#IF NDIM > 2
+           iz = x(3)
+#ENDIF
+           ison = 1 + (ix-1) + nx*(iy-1) + nxny*(iz-1)
            iskip = ncoarse + (ison-1)*ngridmax
            icell = iskip + ind_grid(j)
+
+           ! print*, 'computing flux', ipart
 
            ! Compute the outflux (<0)
            Fout = 0
            do dir = 1, twondim
-              call getFlux(dir, ison, j, fluxes, flux)
+              call getFlux(dir, ix, iy, iz, j, fluxes, flux)
               if (flux < 0) Fout = Fout + flux
            end do
 
-           mass = uold(icell, 1) ! mass of cell
+           mass = uold(ind_grid(j), 1) ! mass of cell
 
            call ranf(localseed, rand)
 
@@ -881,54 +931,68 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               ! Pick a direction
               call ranf(localseed, rand)
 
-              ! Get outgoing flux
+              ! Two cases:
+              ! 1. stay in the same grid
+              ! 2. move to a neighbor grid
               do dir = 1, twondim
-                 call getFlux(dir, ison, j, fluxes, flux)
-                 if (flux < 0) Fout = Fout + flux
-              end do
+                 call getFlux(dir, ix, iy, iz, j, fluxes, flux)
+                 if (rand < flux/Fout) then ! Move particle
+                    ! print*, 'in direction', dir, 'from', ix, iy, iz
 
-              do dir = 1, twondim
-                 if (rand < -flux/Fout) then ! Move particle
-                    new_icell = ind_ncell(j, ison, dir)
-                    do k = 1, twotondim
-                       write(*, '(i3,*(2x, i6))') k, ind_ncell(j, k, :)
-                    end do
+                    dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 | 5,6->3
 
-                    xg(1:ndim) = xp(ipart, :)
-                    dirm2 = dir / 2 + 1
+                    ! Two cases:
+                    ! 1. stay in the same grid
+                    ! 2. move to a neighbor grid
+
+                    ! write(*, '(a3, *(2x, a6))') 'k', ''
+                    ! do k = 1, twotondim
+                    !    write(*, '(i3,*(2x, i6))') k, ind_ncell(j, k, :)
+                    ! end do
+
+                    ! print*, 'before', ipart, xp(ipart, :), move_flag(ipart)
                     do dim = 1, ndim
-                       if (dirm2 == dim ) then
-                          if (mod(dir, 2) == 1) then ! direction 1, 3, 5, …: to the left
-                             newx(dim) = xg(ind_grid(j), ) + 0.5**(ilevel)
-                          else
-                             newx(dim) = xg(ind_grid(j), ) + 3*0.5**(ilevel)
+                       if (dirm2 == dim) then
+                          if (mod(dir, 2) == 1) then ! going left
+                             xp(ipart, dim) = xp(ipart, dim) - dx
+                          else                       ! going right
+                             xp(ipart, dim) = xp(ipart, dim) + dx
                           end if
                        end if
                     end do
-                    print*, 'From to', icell, new_icell, dir
-                    print*, xp(ipart, :)
-                    print*, xg(1:ndim)
+                    ! print*, 'after ', ipart, xp(ipart, :), move_flag(ipart)
+                    ! print*, ''
 
-                    ! Compute the displacement given the level of our cell and
-                    ! the one of the neighbour cell
-                    do dim = 1, ndim
-                       xp(ipart, dim) = xg(dim)
-                    end do
-                    ! tracer_moved(ipart) = .true.
                     exit
                  else                     ! Increase proba for moving in next direction
-                    rand = rand - (-flux / Fout)
+                    if (flux < 0) rand = rand - flux / Fout
                  end if
-              end do
-           end if
+               end do
+            end if
         end if
 
         ! Next one
+        ! print*, 'next part'
+        move_flag(ipart) = .false.
         ipart = nextp(ipart)
      end do
   end do
 
 contains
+  function goingToOtherGrid(ix, iy, iz, dir)
+    logical :: goingToOtherGrid
+
+    integer, intent(in) :: ix, iy, iz, dir
+    goingToOtherGrid = &
+         (ix == 1 .and. dir == 1) .or. &
+         (ix == 3 .and. dir == 2) .or. &
+         (iy == 1 .and. dir == 3) .or. &
+         (iy == 3 .and. dir == 4) .or. &
+         (iz == 1 .and. dir == 5) .or. &
+         (iz == 3 .and. dir == 6)
+
+  end function goingToOtherGrid
+
   ! function getNeighbour(oct, dir) result (noct)
   !   integer, dimension(1:nvector), intent(in) :: oct
   !   integer, intent(in) :: dir
@@ -941,35 +1005,31 @@ contains
 
   ! end function getNeighbour
 
-  subroutine getFlux(dir, ison, j, fluxes, flux)
-    integer, intent(in)  :: dir, ison, j
+  subroutine getFlux(dir, ii0, jj0, kk0, j, fluxes, flux)
+    integer, intent(in)  :: dir, j
+    integer, intent(in) :: ii0, jj0, kk0
     real(dp), intent(in) :: fluxes(:,:,:,:,:,:)
 
     real(dp), intent(out) :: flux
 
     integer :: sign ! this is the sign to get fluxes from cell out of it
-    integer :: ii, jj, kk, dim, nxny
+    integer :: dim, nxny, ii, jj, kk
 
-    nxny = nx*ny
-    ! invert relation ison = 1 + ix + nx*iy + nx*ny*iz
-    kk = (ison-1) / nxny
-    jj = (ison-1-nxny*kk) / nx
-    ii = (ison-1-nxny*kk - nx*jj)
+    ii = ii0
+    jj = jj0
+    kk = kk0
     ! the sign is +1 when the direction is 1, 3, 5
     ! the sign is -1 when the direction is 2, 4, 6
     sign = 1
     if (mod(dir, 2) == 0) sign = -1
     dim = dir / 3 + 1 ! so that 1,2 -> 1 & 3,4 -> 2 & 4,5 -> 3
 
-    ii = ii+1
-    jj = jj+1
-    kk = kk+1
-
     ! Select the location given ii, jj, kk and the direction
     if (dim == 1)      then
        if (sign == -1) ii = ii + 1
     else if (dim == 2) then
        if (sign == -1) jj = jj + 1
+       kk = 1
     else
        if (sign == -1) kk = kk + 1
     end if

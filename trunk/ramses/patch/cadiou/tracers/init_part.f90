@@ -18,11 +18,11 @@ subroutine init_part
   integer::npart2,ndim2,ncpu2
   integer::ipart,jpart,ipart_old,ilevel,idim
   integer::i,igrid,ncache,ngrid,iskip,isink
-  integer::ind,ix,iy,iz,ilun,info,icpu,nx_loc
+  integer::ind,ix,iy,iz,ilun,info,icpu
   integer::i1,i2,i3,i1_min,i1_max,i2_min,i2_max,i3_min,i3_max
   integer::buf_count,indglob,npart_new
   real(dp)::dx
-  real(dp)::scale,dx_loc,rr,rmax,dx_min
+  real(dp)::dx_loc,rr,rmax,dx_min
   integer::ncode,bit_length,temp
   real(kind=8)::bscale
   real(dp),dimension(1:twotondim,1:3)::xc
@@ -40,7 +40,6 @@ subroutine init_part
   real(qdp),dimension(1:nvector)::order
   real(kind=8),dimension(1:nvector)::mm, tt
   real(kind=8)::dispmax=0.0,dispall
-  real(dp),dimension(1:3)::skip_loc
   real(dp),dimension(1:3)::centerofmass
 
   integer::ibuf,tag=101,tagf=102,tagu=102
@@ -61,6 +60,16 @@ subroutine init_part
 
   integer ,dimension(1:ncpu,1:IRandNumSize) :: allseed
 
+  integer :: nx_loc
+  real(dp) :: scale
+  real(dp), dimension(1:3) :: skip_loc
+  nx_loc=icoarse_max-icoarse_min+1
+  scale=boxlen/dble(nx_loc)
+  skip_loc=(/0.0d0,0.0d0,0.0d0/)
+  if(ndim>0)skip_loc(1)=dble(icoarse_min)
+  if(ndim>1)skip_loc(2)=dble(jcoarse_min)
+  if(ndim>2)skip_loc(3)=dble(kcoarse_min)
+
   if(verbose)write(*,*)'Entering init_part'
 
   if(allocated(xp))then
@@ -80,13 +89,16 @@ subroutine init_part
   allocate(ptcl_phi(npartmax))
 #endif
   xp=0.0; vp=0.0; mp=0.0; levelp=0; idp=0
-  if(star.or.sink)then
+  if(star.or.sink.or.MC_tracer)then
      allocate(tp(npartmax))
      tp=0.0
      if(metal)then
         allocate(zp(npartmax))
         zp=0.0
      end if
+     allocate(move_flag(npartmax))
+     if(MC_tracer) move_flag = .true.
+
   end if
 
   !--------------------
@@ -216,7 +228,8 @@ subroutine init_part
      end select
 
      ! Initialize tracer particles
-     if(MC_tracer) then
+     if(MC_tracer.or.tracer) then
+        if(debug)write(*, *)'loading tracers'
         call load_tracers
         if(localseed(1)==-1)then
            call rans(ncpu, iseed, allseed)
@@ -242,7 +255,6 @@ contains
     ipart=0
     ! Loop over initial condition levels
     do ilevel=levelmin,nlevelmax
-
        if(initfile(ilevel)==' ')cycle
 
        ! Mesh size at level ilevel in coarse cell units
@@ -830,13 +842,16 @@ contains
     implicit none
 
     real(dp):: xx1, xx2, xx3, vv1, vv2, vv3, mm1, ll1, ll2, ll3
+
     ! The tracers are loaded after all the other particles, so the first tracer
     ! is the particle number 'npart'
     ipart=npart
 
-    if(TRIM(initfile(levelmin)).NE.' ')then
+    ! print*, 'MC-TRACERS0------------------',initfile(8)
+    ! if(TRIM(initfile(levelmin)).NE.' ')then
+    !    print*, 'MC-TRACERS-------------------',MC_tracer
 
-       filename=TRIM(initfile(levelmin))//'/ic_tracers'
+       filename='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_tracers'
        if(myid==1)then
           open(10,file=filename,form='formatted')
           indglob=0
@@ -851,14 +866,15 @@ contains
                 read(10,*,end=100)xx1,xx2,xx3,vv1,vv2,vv3,mm1
                 jpart=jpart+1
                 indglob=indglob+1
-                xx(i,1)=xx1+boxlen/2.0
-                xx(i,2)=xx2+boxlen/2.0
-                xx(i,3)=xx3+boxlen/2.0
+                xx(i,1)=xx1 !+boxlen/2.0
+                xx(i,2)=xx2 !+boxlen/2.0
+                xx(i,3)=xx3 !+boxlen/2.0
                 vv(i,1)=vv1
                 vv(i,2)=vv2
                 vv(i,3)=vv3
                 ! W: the mass is set to 0d0, because they are tracer particles. The 'mass' of the particle is
                 ! tracked using the time
+                mm(i  )=0d0
                 tt(i  )=mm1
                 ii(i  )=indglob
              end do
@@ -870,6 +886,7 @@ contains
           call MPI_BCAST(xx,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
           call MPI_BCAST(vv,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
           call MPI_BCAST(tt,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
+          call MPI_BCAST(mm,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
           call MPI_BCAST(ii,nvector  ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
           call MPI_BCAST(eof,1       ,MPI_LOGICAL         ,0,MPI_COMM_WORLD,info)
           call MPI_BCAST(jpart,1     ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
@@ -883,14 +900,16 @@ contains
                 ipart=ipart+1
                 if(ipart>npartmax)then
                    write(*,*)'Maximum number of particles incorrect'
-                   write(*,*)'npartmax should be greater than',ipart
+                   write(*,*)'npartmax should be greater than',ipart, 'got', npartmax
                    call clean_stop
                 endif
-                xp(ipart,1:3)=xx(i,1:3)
-                vp(ipart,1:3)=vv(i,1:3)
-                tp(ipart)    =tt(i)
+                xp(ipart,:)=xx(i,:)
+                vp(ipart,:)=vv(i,:)
+                ! TODO tp(ipart)    =tt(i)
+                mp(ipart)    =mm(i) !TODO:checkme
                 levelp(ipart)=levelmin
                 idp(ipart)   =ii(i)
+                write(*, '(i5, 3f8.5)') ipart, xp(ipart,:)
 #ifndef WITHOUTMPI
              endif
 #endif
@@ -898,8 +917,7 @@ contains
 
        end do
        if(myid==1)close(10)
-
-    end if
+    ! end if
     npart=ipart
 
     ! Compute total number of particle
@@ -916,7 +934,7 @@ contains
     do icpu=2,ncpu
        npart_cpu(icpu)=npart_cpu(icpu-1)+npart_all(icpu)
     end do
-    if(debug)write(*,*)'npart=',npart,'/',npart_cpu(ncpu)
+    if(debug)write(*,*)'npart=',npart,'/',npart_cpu(ncpu), '(tracers)'
   end subroutine load_tracers
 
 end subroutine init_part

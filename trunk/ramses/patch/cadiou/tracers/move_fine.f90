@@ -497,6 +497,8 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         do j=1,np
            if (MC_tracer .and. mp(ind_part(j)) == 0d0) then
               ! do nothing, already moved in godunov file
+              ! print*, '-------------------------- Skipping part!'
+              new_xp(j,idim)=xp(ind_part(j),idim)
            else
               new_xp(j,idim)=xp(ind_part(j),idim)+new_vp(j,idim)*dtnew(ilevel)
            end if
