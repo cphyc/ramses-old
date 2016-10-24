@@ -824,12 +824,15 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   integer,dimension(1:nvector, 1:twotondim) :: ind_cell
   integer,dimension(1:nvector, 1:twotondim, 0:twondim) :: ind_ncell
   integer,dimension(1:nvector, 0:twondim) :: tmp_ncell
+  integer, dimension(1:nvector) :: tmp_ind_cell
 
   integer :: i, j, k, dir, dim, ison, iskip, icell, igrid_cell, ficell, ncell, ipart, new_icell, ix, iy, iz
   integer :: ixnc, iync, iznc
   integer :: dim0, nxny, dirm2, nx_loc
   real(kind=dp) :: scale, dx
   real(kind=dp), dimension(1:3) :: x, xbound, skip_loc
+  integer :: npos, ind_fathergrid_ncell
+
 
   ! integer, save :: ncall = 0
 
@@ -847,51 +850,42 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   if(ndim>2) skip_loc(3) = dble(kcoarse_min)
   scale = boxlen/dble(nx_loc)
 
-  ! Iterate over neighbour of father grid
+  ! Get neighbour grids
   call getnborgrids(ind_grid, ind_ngrid, nvector)
 
   ! Precompute the indexes of the cells of each grid
   do j = 1, nvector
      do i = 1, twotondim
-        iskip = ncoarse + (i - 1)*ngridmax
+        iskip = ncoarse + (i - 1)*ngridmax + 1
         ind_cell(j, i) = ind_grid(j) + iskip
      end do
   end do
 
   ! Get each cell's neighbour in all 6 directions
   do i = 1, twotondim
-     call getnborfather(ind_cell(:, i), tmp_ncell, nvector, ilevel)
-     do j = 0, twondim
-        ind_ncell(:, i, j) = tmp_ncell(:, j)
+     do j = 1, nvector
+        tmp_ind_cell(j) = ind_cell(j, i)
+     end do
+     call getnborfather(tmp_ind_cell, tmp_ncell, nvector, ilevel)
+     do k = 0, twondim
+        do j = 1, nvector
+           ind_ncell(j, i, k) = tmp_ncell(j, k)
+        end do
      end do
   end do
 
-
   ! do j = 1, nvector
-  !    write(*, '(i4, 2x, 2(f8.5, 2x), i4)') ind_grid(j), xg(ind_grid(j), :), numbp(ind_grid(j))
-  ! end do
-
-  ! do j = 1, nvector
-  !    print*, 'Grid j  ', j, ind_grid(j)
-  !    print*, 'position', xg(ind_grid(j), :)
-  !    ipart = headp(ind_grid(j))
-  !    do i = 1, numbp(ind_grid(j))
-  !       print*, ipart, xp(ipart, :)
-  !       ipart = nextp(ipart)
+  !    do i = 1, twotondim
+  !       print*, 'Neighbour of ', ind_cell(j, i), ind_grid(j)
+  !       print*, ind_ncell(j, i, :)
   !    end do
   ! end do
 
   do j = 1, nvector
      ! Loop over all particles
      ipart = headp(ind_grid(j))
-     ! print*, '==================== new grid', ind_grid(j)
 
      do i = 1, numbp(ind_grid(j))
-        ! print*, "   >> Particle", ipart, xp(ipart, :)
-        ! Skip already moved particles
-        ! .not. tracer_moved(ipart)
-
-        ! print*, 'part  ', ipart, ind_grid(j), move_flag(ipart)
 
         if (mp(ipart) == 0d0 .and. move_flag(ipart)) then
 
@@ -938,33 +932,40 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               do dir = 1, twondim
                  call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                  if (rand < flux/Fout) then ! Move particle
-                    ! print*, 'in direction', dir, 'from', ix, iy, iz
 
-                    dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 | 5,6->3
+                    ! 4 cases:
+                    ! 1. the neighbour cell is refined (a.k.a. has a son)
+                    ! 2. the neighbour cell is unrefined, of same level as current cell (their fathers are neighbors, or are the same)
+                    ! 3. the neighbour cell is unrefined, of coarser level as current cell (neighbour grid == 0)
+                    if (son(ind_ncell(j, ison, dir)) > 0) then                      ! case 1
+                       ! The algorithm has already treated it, hasn't it?
+                       print*, 'case 1'
+                    else
+                       if (ind_ngrid(j, dir) == 0) then                             ! case 3
+                          ! get the center of the cell
+                          print*, 'case 3'
+                       else                                                         ! case 2
+                          dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 | 5,6->3
 
-                    ! Two cases:
-                    ! 1. stay in the same grid
-                    ! 2. move to a neighbor grid
-
-                    ! write(*, '(a3, *(2x, a6))') 'k', ''
-                    ! do k = 1, twotondim
-                    !    write(*, '(i3,*(2x, i6))') k, ind_ncell(j, k, :)
-                    ! end do
-
-                    ! print*, 'before', ipart, xp(ipart, :), move_flag(ipart)
-                    do dim = 1, ndim
-                       if (dirm2 == dim) then
+                          print*, 'case 2'
                           if (mod(dir, 2) == 1) then ! going left
-                             xp(ipart, dim) = xp(ipart, dim) - dx
+                             xp(ipart, dirm2) = xp(ipart, dirm2) - dx
                           else                       ! going right
-                             xp(ipart, dim) = xp(ipart, dim) + dx
+                             xp(ipart, dirm2) = xp(ipart, dirm2) + dx
                           end if
-                          ! print*, 'moved particle', ipart, dir, dx
                        end if
-                    end do
-                    ! print*, 'after ', ipart, xp(ipart, :), move_flag(ipart)
-                    ! print*, ''
+                    end if
 
+                    ! do dim = 1, ndim
+                    !    if (dirm2 == dim) then
+                    !       if (mod(dir, 2) == 1) then ! going left
+                    !          xp(ipart, dim) = xp(ipart, dim) - dx
+                    !       else                       ! going right
+                    !          xp(ipart, dim) = xp(ipart, dim) + dx
+                    !       end if
+                    !       ! print*, 'moved particle', ipart, dir, dx
+                    !    end if
+                    ! end do
                     exit
                  else ! Increase proba for moving in next direction
                     if (flux < 0) rand = rand - flux / Fout
@@ -1012,4 +1013,37 @@ contains
     flux = sign*fluxes(j, ii, jj, kk, 1, dim)
   end subroutine getFlux
 
+  ! Compute the relative level of the neighboring cell in direction, returning
+  ! +1 if the cell in dir is refined, 0 if the cell is unrefined of same level
+  ! as the input cell and -1 if the cell is unrefined at level-1
+  function neighborRelativeLevel(ind_cell, ind_ngrid, ind_ncell, direction)
+    integer, intent(in) :: ind_cell, direction
+    integer, intent(in), dimension(1:twondim) :: ind_ncell ! the neighboring cells
+    integer, intent(in), dimension(1:twondim) :: ind_ngrid ! the neighboring parent grids
+    integer :: neighborRelativeLevel
+
+    integer :: pos, ind_fathergrid_ncell
+
+    if (son(ind_ncell(direction)) > 0 ) then
+       ! If the neighbor cell is a grid, then because of how ind_ncell is built
+       neighborRelativeLevel = +1
+    else
+       ! If the grid of the neighbour cell is a neighbor of the cell's grid
+
+       ! get the location of neighbor in grid
+       pos = (ind_ncell(direction)-ncoarse-1)/ngridmax+1
+       ind_fathergrid_ncell = ind_ncell(direction)-ncoarse-(pos-1)*ngridmax
+
+       if (ind_fathergrid_ncell == ind_ngrid(direction)) then
+          neighborRelativeLevel = 0
+       else
+          neighborRelativeLevel = -1
+       end if
+
+    end if
+
+  end function neighborRelativeLevel
+
+
 end subroutine move_tracers_oct
+
