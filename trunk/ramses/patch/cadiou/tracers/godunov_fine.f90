@@ -856,7 +856,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   ! Precompute the indexes of the cells of each grid
   do j = 1, nvector
      do i = 1, twotondim
-        iskip = ncoarse + (i - 1)*ngridmax + 1
+        iskip = ncoarse + (i - 1)*ngridmax
         ind_cell(j, i) = ind_grid(j) + iskip
      end do
   end do
