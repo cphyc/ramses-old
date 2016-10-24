@@ -1,3 +1,4 @@
+
 !###########################################################
 !###########################################################
 !###########################################################
@@ -23,7 +24,7 @@ subroutine godunov_fine(ilevel)
 
   ! Loop over active grids by vector sweeps
   ncache=active(ilevel)%ngrid
-  
+
   if (MC_tracer) move_flag = .true.
 
   do igrid=1,ncache,nvector
@@ -899,7 +900,6 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
            ix = 1; iy = 1; iz = 1
            do dim = 1, ndim
               x(dim) = (xp(ipart, dim) / scale + skip_loc(dim) - xg(ind_grid(j), dim))/dx + 1.5d0
-              ! print*, 'x(dim)', x(dim), ind_grid(j)
            end do
 
            ix = x(1)
@@ -909,7 +909,8 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
 #IF NDIM > 2
            iz = x(3)
 #ENDIF
-           ison = 1 + (ix-1) + nx*(iy-1) + nxny*(iz-1)
+           ison = 1 + (ix-1) + 2*(iy-1) + 4*(iz-1)
+
            iskip = ncoarse + (ison-1)*ngridmax
            icell = iskip + ind_grid(j)
 
@@ -922,7 +923,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               if (flux < 0) Fout = Fout + flux
            end do
 
-           mass = uold(ind_grid(j), 1) ! mass of cell
+           mass = uold(icell, 1) ! mass of cell
 
            call ranf(localseed, rand)
 
@@ -958,13 +959,14 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
                           else                       ! going right
                              xp(ipart, dim) = xp(ipart, dim) + dx
                           end if
+                          ! print*, 'moved particle', ipart, dir, dx
                        end if
                     end do
                     ! print*, 'after ', ipart, xp(ipart, :), move_flag(ipart)
                     ! print*, ''
 
                     exit
-                 else                     ! Increase proba for moving in next direction
+                 else ! Increase proba for moving in next direction
                     if (flux < 0) rand = rand - flux / Fout
                  end if
                end do
@@ -972,39 +974,12 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
         end if
 
         ! Next one
-        ! print*, 'next part'
         move_flag(ipart) = .false.
         ipart = nextp(ipart)
      end do
   end do
 
 contains
-  function goingToOtherGrid(ix, iy, iz, dir)
-    logical :: goingToOtherGrid
-
-    integer, intent(in) :: ix, iy, iz, dir
-    goingToOtherGrid = &
-         (ix == 1 .and. dir == 1) .or. &
-         (ix == 3 .and. dir == 2) .or. &
-         (iy == 1 .and. dir == 3) .or. &
-         (iy == 3 .and. dir == 4) .or. &
-         (iz == 1 .and. dir == 5) .or. &
-         (iz == 3 .and. dir == 6)
-
-  end function goingToOtherGrid
-
-  ! function getNeighbour(oct, dir) result (noct)
-  !   integer, dimension(1:nvector), intent(in) :: oct
-  !   integer, intent(in) :: dir
-
-  !   ! Output
-  !   integer, dimension(1:nvector,1:twotondim) :: noct
-
-  !   ! TODO
-  !   noct = 0
-
-  ! end function getNeighbour
-
   subroutine getFlux(dir, ii0, jj0, kk0, j, fluxes, flux)
     integer, intent(in)  :: dir, j
     integer, intent(in) :: ii0, jj0, kk0
@@ -1036,25 +1011,5 @@ contains
 
     flux = sign*fluxes(j, ii, jj, kk, 1, dim)
   end subroutine getFlux
-
-  ! function getCellsInDir(oct, dir) result(icells)
-  !   integer, intent(in) :: oct, dir
-  !   integer, dimension(1:2*(ndim-1)) :: icells
-
-  !   integer, dimension(1:2*(ndim-1)) :: iskip
-  !   integer, dimension(1:4,1:6), save :: ccc
-
-  !   ccc(1:4,1) = (/1, 3, 5, 7/)
-  !   ccc(1:4,2) = (/2, 4, 6, 8/)
-  !   ccc(1:4,3) = (/1, 2, 5, 6/)
-  !   ccc(1:4,4) = (/3, 4, 7, 8/)
-  !   ccc(1:4,5) = (/1, 2, 3, 4/)
-  !   ccc(1:4,6) = (/5, 6, 7, 8/)
-
-  !   ! TODO : compute the absolute location of cell, not relative
-  !   iskip = ncoarse + (ccc(:, dir) - 1)*ngridmax
-  !   icells(:) = oct + iskip(:)
-
-  ! end function getCellsInDir
 
 end subroutine move_tracers_oct
