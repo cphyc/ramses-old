@@ -909,7 +909,7 @@ contains
                 mp(ipart)    =mm(i) !TODO:checkme
                 levelp(ipart)=levelmin
                 idp(ipart)   =ii(i)
-                write(*, '(i5, 3f8.5)') ipart, xp(ipart,:)
+                ! write(*, '(i5, 3f8.5)') ipart, xp(ipart,:)
 #ifndef WITHOUTMPI
              endif
 #endif
