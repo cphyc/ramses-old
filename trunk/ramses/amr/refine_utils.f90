@@ -989,6 +989,7 @@ subroutine kill_grid(ind_cell,ilevel,nn,ibound,boundary_region)
   end do
   if(pic)then
      do i=1,nn
+        if(debug)print*,'%% killed list',ind_grid_son(i)
         headp(ind_grid_son(i))=0
         tailp(ind_grid_son(i))=0
         numbp(ind_grid_son(i))=0

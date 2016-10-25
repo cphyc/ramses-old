@@ -1166,6 +1166,7 @@ subroutine defrag
      end do
   end do
   do igrid=1,igridmax
+     if(debug) print*,'%% flag2',igrid, flag2(igrid)
      numbp(igrid)=flag2(igrid)
   end do
 

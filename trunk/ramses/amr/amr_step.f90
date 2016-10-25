@@ -172,7 +172,7 @@ recursive subroutine amr_step(ilevel,icount)
      if(imov.le.imovout)then
         if(aexp>=amovout(imov).or.t>=tmovout(imov))then
            call timer('io','start')
-           call output_frame()
+           ! call output_frame()
         endif
      endif
   end if

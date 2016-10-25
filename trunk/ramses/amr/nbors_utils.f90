@@ -551,7 +551,7 @@ subroutine getnborgrids(igrid,igridn,ngrid)
         igridn(i,j)=son(nbor(igrid(i),j))
      end do
   end do
-    
+
 end subroutine getnborgrids
 !##############################################################
 !##############################################################
