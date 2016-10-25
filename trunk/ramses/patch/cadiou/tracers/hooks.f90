@@ -4,35 +4,206 @@ module hooks
 
 contains
 
-  ! Routine called after the flux computation
+  !---------------------------------------------------------------------------------
+  ! Hook after flux computation
+  !---------------------------------------------------------------------------------
   subroutine post_flux_hook(ind_grid, flux, ilevel)
     use amr_commons
     use hydro_commons
 
-    integer,dimension(1:nvector), intent(in)                                            :: ind_grid
+    integer, dimension(1:nvector), intent(in)                                           :: ind_grid
     real(dp),dimension(1:nvector, if1:if2, jf1:jf2, kf1:kf2, 1:nvar, 1:ndim),intent(in) :: flux
     integer, intent(in)                                                                 :: ilevel
 
+    !######################
+    ! Customize here
+    !######################
     if (MC_tracer) then
        call move_tracers_oct(ind_grid, flux, ilevel)
     end if
   end subroutine post_flux_hook
 
-  ! Routine called after a cell has been deleted
-  subroutine post_deleted_cell_hook()
+  !---------------------------------------------------------------------------------
+  ! Hooks before and after grid creation
+  !---------------------------------------------------------------------------------
+  subroutine pre_kill_grid_hook(ind_cell, ilevel, nn, ibound, boundary_region)
     use amr_commons
+    use pm_commons
+
+    integer, intent(in) :: nn, ilevel, ibound
+    logical, intent(in) :: boundary_region
+    integer, intent(in), dimension(:) :: ind_cell
+
+    !######################
+    ! Customize here
+    !######################
+
+    integer :: ipart, igrid, i, j, dim
+    logical, save :: firstCall = .true.
+    real(dp), save :: skip_loc(3), nx_loc
+    real(dp) :: dx, scale
+
+    if (firstCall) then
+       skip_loc=(/0.0d0, 0.0d0, 0.0d0/)
+       if(ndim>0) skip_loc(1) = dble(icoarse_min)
+       if(ndim>1) skip_loc(2) = dble(jcoarse_min)
+       if(ndim>2) skip_loc(3) = dble(kcoarse_min)
+
+       nx_loc=(icoarse_max-icoarse_min+1)
+
+       firstCall = .false.
+    end if
+
+    scale = boxlen/dble(nx_loc)
+    dx = 0.5D0**ilevel
 
     if (MC_tracer) then
-    end if
-  end subroutine post_deleted_cell_hook
+       ! For all particles, recenter them in the center of the grid that's being deleted
+       ! (becoming a cell)
+       do j = 1, nn
+          igrid = son(ind_cell(j))
+          ipart = headp(igrid)
 
-  ! Routine called after a grid has been created
-  subroutine post_created_grid_hook()
+          do i = 1, numbp(igrid)
+             print*, 'pre_kill_grid_hook', ipart, igrid
+
+             if (mp(ipart) == 0d0) then
+                do dim = 1, ndim
+                   xp(ipart, dim) = (xg(igrid, dim) - skip_loc(dim)) * scale
+                end do
+             end if
+             ipart = nextp(igrid)
+          end do
+       end do
+    end if
+  end subroutine pre_kill_grid_hook
+
+  subroutine post_kill_grid_hook(ind_cell, ilevel, nn, ibound, boundary_region)
     use amr_commons
 
-    if (MC_tracer) then
+    integer, intent(in) :: nn, ilevel, ibound
+    logical, intent(in) :: boundary_region
+    integer, intent(in), dimension(:) :: ind_cell
+
+    !######################
+    ! Customize here
+    !######################
+
+  end subroutine post_kill_grid_hook
+
+  !---------------------------------------------------------------------------------
+  ! Hooks before and after grid creation
+  !---------------------------------------------------------------------------------
+  subroutine pre_make_grid_fine_hook(ind_grid, ind_cell, ind, &
+       ilevel, nn, ibound, boundary_region)
+    use amr_commons
+    integer, intent(in) :: nn, ind, ilevel, ibound
+    logical, intent(in) :: boundary_region
+    integer, dimension(1:nvector), intent(in) :: ind_grid, ind_cell
+
+    !######################
+    ! Customize here
+    !######################
+  end subroutine pre_make_grid_fine_hook
+
+  subroutine post_make_grid_fine_hook(ind_grid, ind_cell, ind, &
+       ilevel, nn, ibound, boundary_region)
+    use amr_commons
+    use hydro_commons
+    use pm_commons
+    use random
+    integer, intent(in) :: nn, ind, ilevel, ibound
+    logical, intent(in) :: boundary_region
+    integer, dimension(1:nvector), intent(in) :: ind_grid, ind_cell
+
+    !######################
+    ! Customize here
+    !######################
+    logical, save :: firstCall = .true.
+    real(dp), save :: skip_loc(3), nx_loc
+    real(dp) :: dx, dxcoarse, scale
+
+    real(dp) :: x, loc(1:3), rand, mass(0:twotondim), xc(1:3)
+    integer :: j, i, dim, fgrid, igrid, ipart, part_dir, ison, iskip, icell
+    integer :: ix, iy, iz
+    logical :: ok
+
+
+    if (firstCall) then
+       skip_loc=(/0.0d0, 0.0d0, 0.0d0/)
+       if(ndim>0) skip_loc(1) = dble(icoarse_min)
+       if(ndim>1) skip_loc(2) = dble(jcoarse_min)
+       if(ndim>2) skip_loc(3) = dble(kcoarse_min)
+
+       nx_loc=(icoarse_max-icoarse_min+1)
+
+       firstCall = .false.
     end if
-  end subroutine post_created_grid_hook
+
+    scale = boxlen/dble(nx_loc)
+    dx = 0.5D0**ilevel           ! dx of the new level
+    dxcoarse = 0.5D0**(ilevel-1) ! dx of the previous level
+
+    if (MC_tracer) then
+       ! Compute the expected location of particles relative to xg in dx units
+       loc(3) = (ind-1) / 4
+       loc(2) = (ind-1-loc(3)*4) / 2
+       loc(1) = (ind-1-loc(3)*4-loc(2)*2)
+
+       do j = 1, nn
+          fgrid = ind_grid(j)
+          igrid = son(ind_cell(j))
+          ipart = headp(fgrid)
+
+          ! Load masses
+          mass(0) = uold(ind_cell(j), 1)
+          do ison = 1, twotondim
+             iskip = ncoarse + (ison-1)*ngridmax
+             icell = iskip + igrid
+             mass(ison) = uold(icell, 1)
+          end do
+
+          do i = 1, numbp(fgrid)
+             print*, 'post_make_grid_fine_hook', ipart, igrid
+
+             if (mp(ipart) == 0d0) then
+                ok = .true.
+                ! Check whether the particle was in the refined cell
+                do dim = 1, ndim
+                   x = (xp(ipart, dim) / scale - xg(fgrid, dim) + skip_loc(dim)) / dxcoarse &
+                        + 1.5d0
+                   ok = ok .and. (int(x) == loc(dim))
+                end do
+
+                ! If the particle is in refined cell, spread it accordingly
+                if (ok) then
+                   ! Pick a random direction
+                   call ranf(localseed, rand)
+
+                   do ison = 1, twotondim
+                      if (rand < mass(ison) / mass(0)) then
+                         ! Move particle to center of new cells
+                         iz=(ison-1)/4
+                         iy=(ison-1-4*iz)/2
+                         ix=(ison-1-2*iy-4*iz)
+                         xc(1) = (dble(ix)-0.5D0)*dx/2.0d0
+                         xc(2) = (dble(iy)-0.5D0)*dx/2.0d0
+                         xc(3) = (dble(iz)-0.5D0)*dx/2.0d0
+                         do dim = 1, ndim
+                            xp(ipart, dim) = (xg(igrid, dim) + xc(dim) - skip_loc(dim)) * scale
+                         end do
+                         rand = 1
+                      else
+                         rand = rand - mass(ison) / mass(0)
+                      end if
+                   end do
+                end if
+             end if
+             ipart = nextp(ipart)
+          end do
+       end do
+    end if
+  end subroutine post_make_grid_fine_hook
 
 end module hooks
 
@@ -88,10 +259,9 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   ! write(*, '(a,i3,a)') '===', ncall, "'th call of move_tracers_oct"
   nxny = nx*ny
 
-  scale = boxlen/dble(nx_loc)
+  nx_loc=(icoarse_max-icoarse_min+1)
   dx = 0.5D0**ilevel
   xbound(1:3)=(/dble(nx),dble(ny),dble(nz)/)
-  nx_loc=(icoarse_max-icoarse_min+1)
   skip_loc=(/0.0d0, 0.0d0, 0.0d0/)
   if(ndim>0) skip_loc(1) = dble(icoarse_min)
   if(ndim>1) skip_loc(2) = dble(jcoarse_min)
