@@ -123,12 +123,13 @@ contains
     real(dp), save :: skip_loc(3), nx_loc
     real(dp) :: dx, dxcoarse, scale
 
-    real(dp) :: x, loc(1:3), rand, mass(0:twotondim), xc(1:3)
+    real(dp) :: x, rand, mass(0:twotondim), xc(1:3)
     integer :: j, i, dim, fgrid, igrid, ipart, part_dir, ison, iskip, icell
-    integer :: ix, iy, iz
+    integer :: ix, iy, iz, loc(1:3)
     logical :: ok
 
 
+    ! Save some time here...
     if (firstCall) then
        skip_loc=(/0.0d0, 0.0d0, 0.0d0/)
        if(ndim>0) skip_loc(1) = dble(icoarse_min)
@@ -164,15 +165,17 @@ contains
           end do
 
           do i = 1, numbp(fgrid)
-             print*, 'post_make_grid_fine_hook', ipart, igrid
-
              if (mp(ipart) == 0d0) then
                 ok = .true.
                 ! Check whether the particle was in the refined cell
                 do dim = 1, ndim
                    x = (xp(ipart, dim) / scale - xg(fgrid, dim) + skip_loc(dim)) / dxcoarse &
-                        + 1.5d0
+                        + 0.5d0
                    ok = ok .and. (int(x) == loc(dim))
+
+                   ! It is possible that x is not 0 or 1 if the particle has already been
+                   ! moved by the routine. In this case, we don't need to move it again
+                   print*, x, loc(dim)
                 end do
 
                 ! If the particle is in refined cell, spread it accordingly
@@ -186,9 +189,9 @@ contains
                          iz=(ison-1)/4
                          iy=(ison-1-4*iz)/2
                          ix=(ison-1-2*iy-4*iz)
-                         xc(1) = (dble(ix)-0.5D0)*dx/2.0d0
-                         xc(2) = (dble(iy)-0.5D0)*dx/2.0d0
-                         xc(3) = (dble(iz)-0.5D0)*dx/2.0d0
+                         xc(1) = (dble(ix)-0.5D0)*dx
+                         xc(2) = (dble(iy)-0.5D0)*dx
+                         xc(3) = (dble(iz)-0.5D0)*dx
                          do dim = 1, ndim
                             xp(ipart, dim) = (xg(igrid, dim) + xc(dim) - skip_loc(dim)) * scale
                          end do
@@ -365,7 +368,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
                           iskip = ncoarse + (ison-1)*ngridmax
                           icell = iskip + ind_grid(j)
                           if (rand < uold(icell, 1) / mass) then
-                             print*, 'projecting', ipart, ilevel, 1+ii+2*jj+4*kk
+                             ! print*, 'projecting', ipart, ilevel, 1+ii+2*jj+4*kk
 
                              disp = ((/ii, jj, kk/)*2 - 3) * dx / 2d0
                              do dim = 1, ndim
@@ -388,7 +391,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
                  icell = iskip + ind_grid(j)
               else                                                ! case 3
                  ! print*, 'case 3'
-                 print*, 'recentering', ipart, ilevel
+                 ! print*, 'recentering', ipart, ilevel
                  ! print*, 'before', xp(ipart, :) / dx
                  ison = 1
                  do dim = 1, ndim
