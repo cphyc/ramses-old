@@ -328,6 +328,7 @@ end subroutine make_grid_coarse
 !###############################################################
 subroutine refine_fine(ilevel)
   use amr_commons
+  use hooks
   implicit none
 #ifndef WITHOUTMPI
   include 'mpif.h'
@@ -367,7 +368,7 @@ subroutine refine_fine(ilevel)
   ! Step 1: if cell is flagged for refinement and
   ! if it is not already refined, create a son grid.
   !---------------------------------------------------
-        
+
   !------------------------------------
   ! Refine cells marked for refinement
   !------------------------------------
@@ -398,7 +399,7 @@ subroutine refine_fine(ilevel)
            end do
         else
            do i=1,ngrid
-              ind_grid(i)=boundary(ibound,ilevel)%igrid(igrid+i-1)           
+              ind_grid(i)=boundary(ibound,ilevel)%igrid(igrid+i-1)
            end do
         end if
         ! Loop over cells
@@ -441,8 +442,12 @@ subroutine refine_fine(ilevel)
                     ind_cell_tmp(icell)=ind_cell(i)
                  end if
               end do
+              call pre_make_grid_fine_hook(ind_grid_tmp, ind_cell_tmp, ind, &
+                   & ilevel+1, ncreate_tmp, ibound, boundary_region)
               call make_grid_fine(ind_grid_tmp,ind_cell_tmp,ind, &
                    & ilevel+1,ncreate_tmp,ibound,boundary_region)
+              call post_make_grid_fine_hook(ind_grid_tmp, ind_cell_tmp, ind, &
+                   & ilevel+1, ncreate_tmp, ibound, boundary_region)
            end if
         end do
      end do
@@ -454,7 +459,7 @@ subroutine refine_fine(ilevel)
   ! Case 2: if cell is not flagged for refinement,but
   ! it is refined, then destroy its child grid.
   !-----------------------------------------------------
-  nkill=0  
+  nkill=0
   do icpu=1,ncpu+nboundary  ! Loop over cpus and boundaries
      if(icpu==myid)then
         ibound=0
@@ -519,8 +524,10 @@ subroutine refine_fine(ilevel)
                     ind_cell_tmp(icell)=ind_cell(i)
                  end if
               end do
+              call pre_kill_grid_hook(ind_cell_tmp,ilevel+1,nkill_tmp,ibound,boundary_region)
               call kill_grid(ind_cell_tmp,ilevel+1,nkill_tmp,ibound,boundary_region)
-           end if           
+              call post_kill_grid_hook(ind_cell_tmp,ilevel+1,nkill_tmp,ibound,boundary_region)
+           end if
         end do  ! End loop over cells
      end do
   end do
