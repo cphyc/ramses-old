@@ -86,12 +86,14 @@ subroutine init_tree
   ! Reset all linked lists at level 1
   !----------------------------------
   do i=1,active(1)%ngrid
+     if(debug) print*, ' %% reset list', active(1)%igrid(i)
      headp(active(1)%igrid(i))=0
      tailp(active(1)%igrid(i))=0
      numbp(active(1)%igrid(i))=0
   end do
   do icpu=1,ncpu
      do i=1,reception(icpu,1)%ngrid
+        if(debug) print*, ' %% reset list', reception(icpu,1)%igrid(i)
         headp(reception(icpu,1)%igrid(i))=0
         tailp(reception(icpu,1)%igrid(i))=0
         numbp(reception(icpu,1)%igrid(i))=0
@@ -394,12 +396,14 @@ subroutine kill_tree_fine(ilevel)
 
   ! Reset all linked lists at level ilevel+1
   do i=1,active(ilevel+1)%ngrid
+     if(debug) print*, ' %% reset list', active(ilevel+1)%igrid(i)
      headp(active(ilevel+1)%igrid(i))=0
      tailp(active(ilevel+1)%igrid(i))=0
      numbp(active(ilevel+1)%igrid(i))=0
   end do
   do icpu=1,ncpu
      do i=1,reception(icpu,ilevel+1)%ngrid
+        if(debug) print*, ' %% reset list', reception(icpu,ilevel+1)%igrid(i)
         headp(reception(icpu,ilevel+1)%igrid(i))=0
         tailp(reception(icpu,ilevel+1)%igrid(i))=0
         numbp(reception(icpu,ilevel+1)%igrid(i))=0
@@ -590,6 +594,8 @@ subroutine merge_tree_fine(ilevel)
            do i=1,ngrid
            if(ok(i))then
            if(numbp(ind_grid_son(i))>0)then
+              if(debug) print*, ' %% merge list', ind_grid(i), ind_grid_son(i)
+
               if(numbp(ind_grid(i))>0)then
                  ! Connect son linked list at the tail of father linked list
                  nextp(tailp(ind_grid(i)))=headp(ind_grid_son(i))
