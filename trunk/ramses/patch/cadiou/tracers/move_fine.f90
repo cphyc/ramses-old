@@ -36,12 +36,20 @@ subroutine move_fine(ilevel)
               ig=1
               ind_grid(ig)=igrid
            end if
-           ip=ip+1
-           ind_part(ip)=ipart
-           ind_grid_part(ip)=ig
-           if(ip==nvector)then
-              call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
-              ip=0
+           if (MC_tracer .and. mp(ipart) == 0d0) then
+              ! Skip tracer particles
+           else
+              ip=ip+1
+              ind_part(ip)=ipart
+              ind_grid_part(ip)=ig
+              if(ip==nvector)then
+                 call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
+                 ip=0
+                 ig=0
+              end if
+           end if
+
+           if (ig==nvector.and.ip==0)then ! prevent issues when there is only tracer particles
               ig=0
            end if
            ipart=next_part  ! Go to next particle
@@ -497,7 +505,7 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         do j=1,np
            if (MC_tracer .and. mp(ind_part(j)) == 0d0) then
               ! do nothing, already moved in godunov file
-              ! print*, '-------------------------- Skipping part!'
+              print*, '-------------------------- Skipping part!'
               new_xp(j,idim)=xp(ind_part(j),idim)
            else
               new_xp(j,idim)=xp(ind_part(j),idim)+new_vp(j,idim)*dtnew(ilevel)
