@@ -65,14 +65,15 @@ contains
           ipart = headp(igrid)
 
           do i = 1, numbp(igrid)
-             print*, 'pre_kill_grid_hook', ipart, igrid
-
              if (mp(ipart) == 0d0) then
+                print*, 'pre_kill_grid_hook', ipart, igrid, ilevel
+                ! print*, 'pre_kill_grid_hook', xp(ipart, :)
                 do dim = 1, ndim
                    xp(ipart, dim) = (xg(igrid, dim) - skip_loc(dim)) * scale
                 end do
+                ! print*, 'pre_kill_grid_hook', xp(ipart, :)
              end if
-             ipart = nextp(igrid)
+             ipart = nextp(ipart)
           end do
        end do
     end if
@@ -166,6 +167,9 @@ contains
 
           do i = 1, numbp(fgrid)
              if (mp(ipart) == 0d0) then
+
+                ! print*, 'post_make_grid_fine_hook', ipart, igrid, ilevel
+
                 ok = .true.
                 ! Check whether the particle was in the refined cell
                 do dim = 1, ndim
@@ -175,11 +179,14 @@ contains
 
                    ! It is possible that x is not 0 or 1 if the particle has already been
                    ! moved by the routine. In this case, we don't need to move it again
-                   print*, x, loc(dim)
+                   ! print*, x, loc(dim)
                 end do
 
                 ! If the particle is in refined cell, spread it accordingly
                 if (ok) then
+                   print*, 'post_make_grid_fine_hook', ipart, igrid, ilevel
+                   ! print*, 'post_make_grid_fine_hook', xp(ipart, :)
+
                    ! Pick a random direction
                    call ranf(localseed, rand)
 
@@ -200,6 +207,8 @@ contains
                          rand = rand - mass(ison) / mass(0)
                       end if
                    end do
+                   ! print*, 'post_make_grid_fine_hook', xp(ipart, :)
+
                 end if
              end if
              ipart = nextp(ipart)
@@ -389,7 +398,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
                  icell = iskip + ind_grid(j)
               else                                                ! case 3
                  ! print*, 'case 3'
-                 ! print*, 'recentering', ipart, ilevel
+                 print*, 'recentering', ipart, ilevel
                  ! print*, 'before', xp(ipart, :) / dx
                  ison = 1
                  do dim = 1, ndim
@@ -414,9 +423,6 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               iskip = ncoarse + (ison-1)*ngridmax
               icell = iskip + ind_grid(j)
            end if
-           ! print*, ison, icell, ix, iy, iz
-
-           ! print*, 'computing flux', ipart
 
            ! Compute the outflux (<0)
            Fout = 0
