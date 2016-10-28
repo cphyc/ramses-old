@@ -66,7 +66,7 @@ contains
 
           do i = 1, numbp(igrid)
              if (mp(ipart) == 0d0) then
-                print*, 'pre_kill_grid_hook', ipart, igrid, ilevel
+                ! print*, 'pre_kill_grid_hook', ipart, igrid, ilevel
                 ! print*, 'pre_kill_grid_hook', xp(ipart, :)
                 do dim = 1, ndim
                    xp(ipart, dim) = (xg(igrid, dim) - skip_loc(dim)) * scale
@@ -184,7 +184,7 @@ contains
 
                 ! If the particle is in refined cell, spread it accordingly
                 if (ok) then
-                   print*, 'post_make_grid_fine_hook', ipart, igrid, ilevel
+                   ! print*, 'post_make_grid_fine_hook', ipart, igrid, ilevel
                    ! print*, 'post_make_grid_fine_hook', xp(ipart, :)
 
                    ! Pick a random direction
@@ -240,39 +240,42 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   ! the fluxes of mass from oct to oct.
   !-------------------------------------------------------------------
   integer,dimension(1:nvector,0:twondim) :: ind_ngrid
-  real(dp) :: flux, Fout, mass, rand
+  real(dp) :: flux, Fout, mass, rand, masses(0:twotondim/2)
   integer,dimension(1:nvector, 1:twotondim) :: ind_cell
   integer,dimension(1:nvector, 1:twotondim, 0:twondim) :: ind_ncell
   integer,dimension(1:nvector, 0:twondim) :: tmp_ncell
   integer, dimension(1:nvector) :: tmp_ind_cell
 
   integer :: i, j, k, dir, dim, ison, iskip, icell, igrid_cell, igrid_ncell, ficell, ncell, ipart, new_icell, ix, iy, iz, ii, jj, kk, indn
-  integer :: ixn, iyn, izn, ixnc, iync, iznc
-  integer :: dim0, nxny, dirm2, nx_loc
-  real(kind=dp) :: scale, dx
+  integer :: ixn, iyn, izn, ixm, iym, izm
+  integer :: dim0, nxny, dirm2, diro2, nx_loc
+  real(kind=dp) :: scale, dx, dxcoarse
   real(kind=dp), dimension(1:3) :: x, xbound, skip_loc, xc
-  integer :: npos, ind_fathergrid_ncell
+  integer, dimension(1:ndim) :: loc
+  integer :: npos, ind_ngrid_ncell, twotondimo2
   logical :: ok
 
   integer :: relLvl
   ! Maximum indexes when looping on cells
 #IF NDIM == 1
-  ixnc = 2; iync = 1; iznc = 1
+  ixm = 2; iym = 1; izm = 1
 #ENDIF
 #IF NDIM == 2
-  ixnc = 2; iync = 2; iznc = 1
+  ixm = 2; iym = 2; izm = 1
 #ENDIF
 #IF NDIM == 3
-  ixnc = 2; iync = 2; iznc = 2
+  ixm = 2; iym = 2; izm = 2
 #ENDIF
   ! integer, save :: ncall = 0
 
+  twotondimo2 = twotondim/2
   ! ncall = ncall + 1
   ! write(*, '(a,i3,a)') '===', ncall, "'th call of move_tracers_oct"
   nxny = nx*ny
 
   nx_loc=(icoarse_max-icoarse_min+1)
   dx = 0.5D0**ilevel
+  dxcoarse = 2d0 * dx
   xbound(1:3)=(/dble(nx),dble(ny),dble(nz)/)
   skip_loc=(/0.0d0, 0.0d0, 0.0d0/)
   if(ndim>0) skip_loc(1) = dble(icoarse_min)
@@ -300,20 +303,109 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
      ! print*, 'grid        ', ind_grid
      ! print*, 'tmp_ind_cell', tmp_ind_cell
      call getnborfather(tmp_ind_cell, tmp_ncell, nvector, ilevel)
-     do k = 0, twondim
+     do dir = 0, twondim
         do j = 1, nvector
-           ind_ncell(j, i, k) = tmp_ncell(j, k)
+           ind_ncell(j, i, dir) = tmp_ncell(j, dir)
         end do
      end do
   end do
 
-  ! do j = 1, nvector
-  !    do i = 1, twotondim
-  !       print*, 'Neighbour of ', ind_cell(j, i), ind_grid(j)
-  !       print*, ind_ncell(j, i, :)
-  !    end do
-  ! end do
+  !--------------------------------------------------------------------------
+  ! Move particles from neighbor cell into cell following fluxes
+  !--------------------------------------------------------------------------
+  ! Here, the neighbor grids are iterated through. Each unrefined one (the cell contained
+  ! are at a coarser level) are treated and their particles moved into the current grid.
+  do dir = 1, twondim
+     do j = 1, nvector
+        if (ind_ngrid(j, dir) == 0) then
+           ! Take cell in grid at boundary
+           if (mod(dir, 2) == 1) then
+              ! Upper left (front) cell in 2D (3D)
+              ison = 1
+           else
+              ! Lower right (back) cell n 2D (3D)
+              ison = twotondim
+           end if
+           ! Get its neighbour in direction dir
+           ncell = ind_ncell(j, ison, dir)
 
+           ! Get the neighbour grid
+           npos = (ncell-ncoarse-1)/ngridmax+1
+           ind_ngrid_ncell = ncell-ncoarse-(npos-1)*ngridmax
+
+           ! Compute the flux from ngrid to grid
+           flux = 0
+
+           ! Iterate over cells on the face in direction
+           ! compute the flux + store masses
+           tmp_ind_cell(1:twotondimo2) = getCells(dir)
+           mass = uold(ncell, 1) ! ncell mass
+           masses(0) = 0d0       ! total mass
+           do i = 1, twotondimo2
+              ison = tmp_ind_cell(i)
+              iz = (ison-1)/4
+              iy = (ison-1-4*iz)/2
+              ix = (ison-1-4*iz-2*iy)
+              call getFlux(dir, ix+1, iy+1, iz+1, j, fluxes, flux)
+              masses(i) = uold(ncoarse + (ison-1)*ngridmax + ind_grid(j), 1)
+              masses(0) = masses(0) + masses(i) ! total mass
+           end do
+
+           ! Skip to next direction if flux<0 (outflow from cell to ncell, not interested)
+           if (flux < 0) then
+              exit
+           end if
+           print*, '================================================'
+           print*, ind_grid(j), dir, numbp(ind_ngrid_ncell)
+
+
+           ! Iterate over particles
+           ipart = headp(ind_ngrid_ncell)
+
+           ! Compute neighbor cell center
+           x(1:ndim) = cellCenter(npos, ind_grid(j), dxcoarse)
+
+           ! For the tracer particles not already moved in this cell
+           do i = 1, numbp(ind_ngrid_ncell)
+              print*, 'ipart move_flag'
+              print*, ipart, move_flag(ipart)
+              print*, x(1:ndim)
+              print*, xp(ipart, 1:ndim)
+              if (mp(ipart) == 0d0 .and. move_flag(ipart) .and. &
+                   all(x(1:ndim) == xp(ipart, 1:ndim))) then
+                 call ranf(localseed, rand)
+                 print*, 'ipart flux/mass rand'
+                 print*, ipart, flux/mass, rand
+                 if (rand < flux/mass) then
+                    ! Distribute randomly the particle
+
+                    print*, 'moving', ipart
+                    call ranf(localseed, rand)
+                    do k = 1, twotondimo2
+                       if (rand < masses(k) / masses(0)) then
+                          ! Put particle at center of cell
+                          xp(ipart, 1:ndim) = cellCenter(tmp_ind_cell(k), ind_grid(j), dx)
+                          print*,'moved from to', ncell, tmp_ind_cell(k)
+                          exit
+                       else
+                          rand = rand - masses(k) / masses(0)
+                       end if
+                    end do
+
+                    ! Mark particle as treated
+                    move_flag(ipart) = .false.
+                 end if
+              end if
+
+              ipart = nextp(ipart)
+           end do
+        end if
+     end do
+  end do
+
+  !--------------------------------------------------------------------------
+  ! Move the particles in cell following the flux
+  !--------------------------------------------------------------------------
   do j = 1, nvector
      ! Loop over all particles
      ipart = headp(ind_grid(j))
@@ -330,10 +422,6 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               x(dim) = (xp(ipart, dim) / scale + skip_loc(dim) - xg(ind_grid(j), dim))/dx + 1.5d0
            end do
 
-           ! print*, 'xp', (xp(ipart, :) / scale + skip_loc(:)) / dx + 1.5d0
-           ! print*, 'xg', (xg(ind_grid(j), :)) / dx
-           ! print*, 'x ', x
-
            ok = .true.
            ix = x(1)
            if (real(ix, dp) /= x(1)) ok = .false.
@@ -345,6 +433,10 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
            iz = x(3)
            if (real(iz, dp) /= x(3)) ok = .false.
 #ENDIF
+
+           !--------------------------------------------------------------------------
+           ! Check that the particles is in the center of a cell
+           !--------------------------------------------------------------------------
            ! Three cases for the location of the particle:
            ! 1. in the center of a cell
            !    -> do nothing
@@ -368,37 +460,29 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
                  call ranf(localseed, rand)
                  ! print*, 'before', xp(ipart, :) / dx
 
-                 do ii = 1, ixnc
-                    do jj = 1, iync
-                       do kk = 1, iznc
-                          ison = 1 + (ii-1) + 2*(jj-1) + 4*(kk-1)
-                          iskip = ncoarse + (ison-1)*ngridmax
-                          icell = iskip + ind_grid(j)
-                          if (rand < uold(icell, 1) / mass) then
-                             print*, 'projecting', ipart, ilevel, 1+(ii-1)+2*(jj-1)+4*(kk-1)
+                 do ison = 1, twotondim
+                    iskip = ncoarse + (ison-1)*ngridmax
+                    icell = iskip + ind_grid(j)
+                    if (rand < uold(icell, 1) / mass) then
+                       xp(ipart, 1:ndim) = cellCenter(ison, ind_grid(j), dx)
+                       kk = (ison-1) / 4
+                       jj = (ison-1-4*kk) / 2
+                       ii = (ison-1-4*kk-2*jj)
 
-                             xc = ((/ii, jj, kk/)*2 - 3) * dx / 2d0
-                             do dim = 1, ndim
-                                xp(ipart, dim) = xp(ipart, dim) + xc(dim)
-                             end do
-                             ix = ii
-                             iy = jj
-                             iz = kk
-                             rand = 1
-                          else
-                             rand = rand - uold(icell, 1) / mass
-                          end if
-                       end do
-                    end do
+                       ix = ii + 1
+                       iy = jj + 1
+                       iz = kk + 1
+                       exit
+                    else
+                       rand = rand - uold(icell, 1) / mass
+                    end if
                  end do
                  ! print*, 'after ', xp(ipart, :) / dx
-                 ison = 1 + (ix-1) + 2*(iy-1) + 4*(iz-1)
-
-                 iskip = ncoarse + (ison-1)*ngridmax
-                 icell = iskip + ind_grid(j)
+                 ison = ison
+                 icell = icell
               else                                                ! case 3
                  ! print*, 'case 3'
-                 print*, 'recentering', ipart, ilevel
+                 ! print*, 'recentering', ipart, ilevel
                  ! print*, 'before', xp(ipart, :) / dx
                  ison = 1
                  do dim = 1, ndim
@@ -414,6 +498,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
                  iy = (ison-1-4*(iz - 1)) / 2 + 1
                  ix = (ison-1-4*(iz - 1)-2*(iy - 1)) + 1
 
+                 ison = ison
                  iskip = ncoarse + (ison-1)*ngridmax
                  icell = iskip + ind_grid(j)
               end if
@@ -423,13 +508,19 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               iskip = ncoarse + (ison-1)*ngridmax
               icell = iskip + ind_grid(j)
            end if
+           ! At this stage, we have icell and ison for the particle
 
            ! Compute the outflux (<0)
            Fout = 0
            do dir = 1, twondim
-              ! print*, ix, iy, iz, j, ilevel
-              call getFlux(dir, ix, iy, iz, j, fluxes, flux)
-              if (flux < 0) Fout = Fout + flux
+              ! Check that the neighbor cell in dir is not finer (in this case,
+              ! ignore flux (already treated above))
+              if (neighborRelativeLevel(icell, ind_ngrid(j, 0:twotondim), &
+                   ind_ncell(j, ison, 0:twotondim), dir) < 1) then
+                 call getFlux(dir, ix, iy, iz, j, fluxes, flux)
+                 if (flux < 0) Fout = Fout + flux
+              end if
+
            end do
 
            mass = uold(icell, 1) ! mass of cell
@@ -441,27 +532,27 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
               ! Pick a direction
               call ranf(localseed, rand)
 
-              ! Two cases:
-              ! 1. stay in the same grid
-              ! 2. move to a neighbor grid
               do dir = 1, twondim
                  call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                  if (rand < flux/Fout) then ! Move particle
-
-                    ! 4 cases:
+                    ! 3 cases:
+                    ! --------
+                    !
                     ! 1. the neighbour cell is refined (a.k.a. has a son)
                     ! 2. the neighbour cell is unrefined, of same level as current cell
                     ! (their fathers are neighbors, or are the same)
                     ! 3. the neighbour cell is unrefined, of coarser level as current cell
                     ! (neighbour grid == 0)
 
-                    ! Case 1 has already been treated at a finer level, so we leave it
-                    ! Case 2 is easy, we just shift the particle in the right direction
+                    ! Case 1 has already been treated at a finer level, do nothing
+                    ! Case 2 is easy, shift the particle in the right direction
                     ! Case 3 we juste move the particle in the center of the neighbour cell
                     relLvl = neighborRelativeLevel(icell, ind_ngrid(j, 0:twondim), &
                          ind_ncell(j, ison, 0:twondim), dir)
                     if (relLvl == 1) then                                                 ! case 1
                        ! Nothing to do, it should have already been done at a finer level
+                       print*, 'Too lazy for da job'
+                       stop
                     else if (relLvl == 0) then                                            ! case 2
                        dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 | 5,6->3
 
@@ -478,34 +569,13 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
 
                        ! Get the index of neigh. in its grid
                        indn = (ind_ncell(j, ison, dir) - ncoarse - 1)/ngridmax + 1
-                       izn = (indn-1) / 4
-                       iyn = (indn-1-izn*4) / 2
-                       ixn = (indn-1-izn*4-iyn*2)
 
                        ! Get the grid number
-                       ind_fathergrid_ncell = ind_ncell(j, ison, dir)-ncoarse-(indn-1)*ngridmax
+                       ind_ngrid_ncell = ind_ncell(j, ison, dir)-ncoarse-(indn-1)*ngridmax
 
-                       print*, ipart
-                       print*, ind_ncell(j, ison, dir), ind_ngrid(j, dir), ind_ngrid(j, 0), ind_fathergrid_ncell
-                       print*, ix-1, iy-1, iz-1
-                       print*, ixn, iyn, izn
+                       ! Set particle in cell (at a coarser level)
+                       xp(ipart, 1:ndim) = cellCenter(indn, ind_ngrid_ncell, dxcoarse)
 
-
-                       ! Compute displacement compared to grid center
-                       xc(1) = (dble(ixn)-0.5d0)*dx*2d0
-                       xc(2) = (dble(iyn)-0.5d0)*dx*2d0
-                       xc(3) = (dble(izn)-0.5d0)*dx*2d0
-                       ! Compute cell center
-                       do dim = 1, ndim
-                          x(dim) = (xg(ind_fathergrid_ncell, dim) + xc(dim) - skip_loc(dim)) * scale
-                       end do
-
-                       ! Store particle position
-                       print*, xp(ipart, :)
-                       do dim = 1, ndim
-                          xp(ipart, dim) = x(dim)
-                       end do
-                       print*, x(:)
                     else
                        print*, 'should not happen'
                        stop
@@ -590,5 +660,52 @@ contains
 
   end function neighborRelativeLevel
 
+  function getCells(direction) result (locs)
+    integer, intent(in) :: direction
+    integer, dimension(1:twotondim/2) :: locs
+
+    integer, save, dimension(1:6, 1:4) :: mapping
+    logical, save :: firstCall = .true.
+
+    if (firstCall) then
+       mapping(1, 1:4) = (/1, 3, 5, 7/) ! left cells
+       mapping(2, 1:4) = (/2, 4, 6, 8/) ! right cells
+       mapping(3, 1:4) = (/1, 2, 5, 6/) ! top cells
+       mapping(4, 1:4) = (/3, 4, 7, 8/) ! bottom cells
+       mapping(5, 1:4) = (/1, 2, 3, 4/) ! front cells
+       mapping(6, 1:4) = (/5, 6, 7, 8/) ! back cells
+
+       firstCall = .false.
+    end if
+
+    locs(1:twotondimo2) = mapping(direction, 1:twotondimo2)
+
+  end function getCells
+
+  function cellCenter(ison, ind_grid, dx) result (x)
+    integer, intent(in)  :: ison, ind_grid
+    real(dp), intent(in) :: dx
+    real(dp), dimension(1:ndim) :: x
+
+    real(dp), dimension(1:3) :: xc
+
+    integer :: ixn, iyn, izn, dim
+    ! Get the location of neighbor cell in its grid
+    izn = (ison-1)/4
+    iyn = (ison-1-4*izn)/2
+    ixn = (ison-1-4*izn-2*iyn)
+
+    ! Compute the expected location of the particles
+    xc(1) = (dble(ixn)-0.5d0)*dx
+    xc(2) = (dble(iyn)-0.5d0)*dx
+    xc(3) = (dble(izn)-0.5d0)*dx
+
+    do dim = 1, ndim
+       x(dim) = (xg(ind_grid, dim) + xc(dim) - skip_loc(dim)) * scale
+    end do
+
+    print*, 'cellCenter', ison, ind_grid, dx, x(1:ndim)
+
+  end function cellCenter
 
 end subroutine move_tracers_oct
