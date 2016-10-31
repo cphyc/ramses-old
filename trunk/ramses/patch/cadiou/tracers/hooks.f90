@@ -363,7 +363,7 @@ subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
            ipart = headp(ind_ngrid_ncell)
 
            ! Compute neighbor cell center
-           x(1:ndim) = cellCenter(npos, ind_grid(j), dxcoarse)
+           x(1:ndim) = cellCenter(npos, ind_ngrid_ncell, dxcoarse)
 
            ! For the tracer particles not already moved in this cell
            do i = 1, numbp(ind_ngrid_ncell)
