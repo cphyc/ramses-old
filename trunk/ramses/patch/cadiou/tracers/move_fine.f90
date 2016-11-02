@@ -403,6 +403,7 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         if(ok(j))then
            indp(j,ind)=ncoarse+(icell(j,ind)-1)*ngridmax+igrid(j,ind)
         else
+           print*, ind_part(j)
            indp(j,ind)=nbors_father_cells(ind_grid_part(j),icell(j,ind))
         end if
      end do

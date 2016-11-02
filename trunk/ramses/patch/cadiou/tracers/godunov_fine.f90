@@ -26,7 +26,11 @@ subroutine godunov_fine(ilevel)
   ncache=active(ilevel)%ngrid
 
   ! Reset move flag at each levelmin
-  if (MC_tracer .and. ilevel==nlevelmax) move_flag = .true.
+  if (MC_tracer .and. ilevel==nlevelmax) then
+     ! print*, 'move_flag = .true.'
+     move_flag = .true.
+  end if
+  
 
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
