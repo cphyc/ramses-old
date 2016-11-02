@@ -227,7 +227,7 @@ end module hooks
 subroutine move_tracers_oct(ind_grid, fluxes, ilevel)
   use amr_parameters      ! nx, ny, nz, dp, ngridmax, nvector, …
   use amr_commons, only   : ncoarse, father, xg, son, myid
-  use pm_commons, only    : xp, headp, mp, localseed, numbp, nextp, move_flag
+  use pm_commons, only    : xp, tp, headp, mp, localseed, numbp, nextp, move_flag
   use random, only        : ranf
   use hydro_commons, only : uold, if1, if2, jf1, jf2, kf1, kf2, nvar
 
