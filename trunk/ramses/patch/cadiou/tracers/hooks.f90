@@ -169,12 +169,13 @@ contains
           ipart = headp(fgrid)
 
           ! Load masses
-          mass(0) = uold(ind_cell(j), 1)
           do ison = 1, twotondim
              iskip = ncoarse + (ison-1)*ngridmax
              icell = iskip + igrid
              mass(ison) = uold(icell, 1)
           end do
+
+          mass(0) = sum(mass(1:twotondim))
 
           do i = 1, numbp(fgrid)
              if (mp(ipart) == 0d0) then
