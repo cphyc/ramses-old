@@ -2,7 +2,7 @@
 module hooks
   use amr_parameters      ! nx, ny, nz, dp, ngridmax, nvector, …
   use amr_commons, only   : ncoarse, father, xg, son, myid
-  use pm_commons, only    : xp, tp, levelp, headp, mp, localseed, numbp, nextp, move_flag
+  use pm_commons, only    : xp, tp, idp, levelp, headp, mp, localseed, numbp, nextp, move_flag
   use random, only        : ranf
   use hydro_commons, only : uold, if1, if2, jf1, jf2, kf1, kf2, nvar
 
@@ -12,6 +12,8 @@ module hooks
   real(kind=dp) :: scale
   integer :: nx_loc
 
+  logical :: ddebug = .false.
+  integer :: dbpart = -1
 
 contains
 
@@ -71,7 +73,7 @@ contains
     !######################
 
     integer :: ipart, igrid, i, j, dim
-    real(dp) :: dx
+    real(dp) :: dx, prevxp(1:ndim)
 
     call initialize_skip_loc
 
@@ -86,13 +88,18 @@ contains
 
           do i = 1, numbp(igrid)
              if (mp(ipart) == 0d0) then
-                ! print*, 'pre_kill_grid_hook', ipart, igrid, ilevel
-                ! print*, 'pre_kill_grid_hook', xp(ipart, :)
-                if(ipart == -1) print*, 'pre_kill_grid_hook'
+                if (ddebug) print*,'kill_grid', ipart, igrid
+
+                if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'kill_grid'
+                if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+
+                prevxp(:) = xp(ipart, :)
                 do dim = 1, ndim
                    xp(ipart, dim) = (xg(igrid, dim) - skip_loc(dim)) * scale
                 end do
-                ! print*, 'pre_kill_grid_hook', xp(ipart, :)
+                call checkBadMove(xp(ipart, :), prevxp)
+                if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+                ! print*, xp(ipart, :) * 2**8
              end if
              ipart = nextp(ipart)
           end do
@@ -147,7 +154,7 @@ contains
     !######################
     real(dp) :: dx, dxcoarse
 
-    real(dp) :: x(1:ndim), rand, mass(0:twotondim)
+    real(dp) :: x(1:ndim), rand, mass(0:twotondim), prevxp(1:ndim)
     integer :: j, i, dim, fgrid, igrid, ipart, part_dir, ison, iskip, icell
     integer :: loc(1:3)
     logical :: ok
@@ -192,11 +199,14 @@ contains
 
                    do ison = 1, twotondim
                       if (rand < mass(ison) / mass(0)) then
+                         if (ddebug) print*,'make_grid', idp(ipart), igrid
                          ! Move particle to center of new cells
-                         if (ipart == -1) print*, 'from to', ipart
-                         if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'make_grid'
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+                         prevxp(:) = xp(ipart, :)
                          xp(ipart, :) = cellCenter(ison, igrid, dx)
-                         if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+                         call checkBadMove(xp(ipart, :), prevxp(:))
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
                          exit
                       else
                          rand = rand - mass(ison) / mass(0)
@@ -249,7 +259,7 @@ contains
     ! the fluxes of mass from oct to oct.
     !-------------------------------------------------------------------
     integer,dimension(1:nvector,0:twondim) :: ind_ngrid
-    real(dp) :: flux, Fout, mass, rand, masses(0:twotondim/2)
+    real(dp) :: flux, Fout, mass, rand, masses(0:twotondim/2), x_tmp
     integer,dimension(1:nvector, 1:twotondim) :: ind_cell
     integer,dimension(1:nvector, 1:twotondim, 0:twondim) :: ind_ncell
     integer,dimension(1:nvector, 0:twondim) :: tmp_ncell
@@ -260,11 +270,12 @@ contains
     integer :: dim0, nxny, dirm2, diro2, nx_loc
     real(kind=dp) :: dx, dxcoarse
     real(kind=dp), dimension(1:3) :: x, xbound, xc
+    real(dp), dimension(1:ndim) :: prevxp
     integer, dimension(1:ndim) :: loc
     integer :: npos, ind_ngrid_ncell, twotondimo2
     logical :: ok
 
-    integer :: relLvl
+    integer, dimension(1:twondim) :: relLvl
 
     call initialize_skip_loc
 
@@ -342,20 +353,27 @@ contains
              ! Iterate over cells on the face in direction
              ! compute the flux + store masses
              tmp_ind_cell(1:twotondimo2) = getCells(dir)
-             mass = uold(ncell, 1) ! ncell mass
-             masses(0) = 0d0       ! total mass
-             do i = 1, twotondimo2
-                ison = tmp_ind_cell(i)
+             mass = uold(ncell, 1) * twotondim ! ncell mass (in units of current level)
+             masses(0) = 0d0                   ! total mass
+             do k = 1, twotondimo2
+                ison = tmp_ind_cell(k)
                 iz = (ison-1)/4
                 iy = (ison-1-4*iz)/2
                 ix = (ison-1-4*iz-2*iy)
+                ! Compute the inflow in the cell
                 call getFlux(dir, ix+1, iy+1, iz+1, j, fluxes, flux)
-                if (flux > 0) Fout = Fout + flux
-                masses(i) = uold(ncoarse + (ison-1)*ngridmax + ind_grid(j), 1)
-                masses(0) = masses(0) + masses(i) ! total mass
+                Fout = Fout + flux
+                if (flux > 0) then
+                   masses(k) = uold(ncoarse + (ison-1)*ngridmax + ind_grid(j), 1)
+                else
+                   ! Store a 0 value so that we don't move particles into this one (flux<0)
+                   masses(k) = 0
+                end if
+
+                masses(0) = masses(0) + masses(k)
              end do
 
-             ! Skip to next direction if flux<0 (outflow from cell to ncell, not interested)
+             ! Skip to next direction if total flux < 0
              if (Fout < 0) then
                 exit
              end if
@@ -366,31 +384,50 @@ contains
              ! Compute neighbor cell center
              x(1:ndim) = cellCenter(npos, ind_ngrid_ncell, dxcoarse)
 
-             ! For the tracer particles not already moved in this cell
+             ! For the tracer particles in the neighbor cell
              do i = 1, numbp(ind_ngrid_ncell)
                 if (mp(ipart) == 0d0 .and. move_flag(ipart) .and. &
                      all(x(1:ndim) == xp(ipart, 1:ndim))) then
-                   call ranf(localseed, rand)
-                   if (rand < Fout/mass) then
-                      ! Distribute randomly the particle
 
+                   ! Decide whether or not to move it depending on the total flux
+                   call ranf(localseed, rand)
+
+                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move from coarser?', dir, (dir-1)/2+1
+                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', '                  ', ix, iy
+                   if (idp(ipart) == dbpart) then
+                      block
+                        integer :: ii, jj
+                        do ii = 1, 3
+                           print*, 'DEBUG: F ', fluxes(j, ii, 1:3, 1, 1, dir/3+1)
+                        end do
+                        print*, 'DEBUG: mass ', mass
+                        print*, 'DEBUG: masses ', masses(1:)
+                      end block
+                   end if
+
+                   if (rand < Fout/mass) then
+                      ! Distribute randomly the particle in cells
                       call ranf(localseed, rand)
                       do k = 1, twotondimo2
                          if (rand < masses(k) / masses(0)) then
                             ! Put particle at center of cell
-                            if (ipart == -1) print*, 'from to', ipart
-                            if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+                            if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move from coarser!'
+                            if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+
+                            prevxp(1:ndim) = xp(ipart, 1:ndim)
                             xp(ipart, 1:ndim) = cellCenter(tmp_ind_cell(k), ind_grid(j), dx)
-                            if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+                            call checkBadMove(xp(ipart, :), prevxp(:))
+
                             tp(ipart) = masses(k)
-                            rand = 1
+                            exit
                          else
                             rand = rand - masses(k) / masses(0)
                          end if
                       end do
 
-                      ! Mark particle as treated
+                      ! Take note that the particle has been moved
                       move_flag(ipart) = .false.
+
                    end if
                 end if
 
@@ -407,6 +444,9 @@ contains
        ! Loop over all particles
        ipart = headp(ind_grid(j))
        do i = 1, numbp(ind_grid(j))
+
+          ! Store old position
+          prevxp(1:ndim) = xp(ipart, 1:ndim)
 
           if (mp(ipart) == 0d0 .and. move_flag(ipart)) then
 
@@ -428,7 +468,6 @@ contains
              iz = x(3)
              if (real(iz, dp) /= x(3)) ok = .false.
 #ENDIF
-
              !--------------------------------------------------------------------------
              ! Check that the particles is in the center of a cell
              !--------------------------------------------------------------------------
@@ -440,8 +479,22 @@ contains
              ! 3. in the center of a deleted cell
              !    -> recenter the particle in the enclosing cell
 
-             if (.not. ok) then ! cases 2 and 3
-                if (all(x(1:ndim) == 1.5d0)) then ! case 2
+             if (ok) then
+                !~~~~~~~~~~~~~~~~~ Don't move particles ~~~~~~~~~~~~~~~~~~~~!
+                ison = 1 + (ix-1) + 2*(iy-1) + 4*(iz-1)
+
+                iskip = ncoarse + (ison-1)*ngridmax
+                icell = iskip + ind_grid(j)
+
+                if (ison < 1)  then
+                   print*, 'ouch, icell < 0', ison, idp(ipart), ix, iy, iz
+                   print*, xp(ipart, :)
+                   print*, x(1:ndim)
+                end if
+             else
+                if (all(x(1:ndim) == 1.5d0)) then
+                   !~~~~~~~~~~~~~~~~~ Project particles ~~~~~~~~~~~~~~~~~~~~!
+
                    ! compute grid mass
                    mass = 0d0
                    do ison = 1, twotondim
@@ -457,9 +510,11 @@ contains
                       iskip = ncoarse + (ison-1)*ngridmax
                       icell = iskip + ind_grid(j)
                       if (rand < uold(icell, 1) / mass) then
-                         if (ipart == -1) print*, 'from to', ipart
-                         if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
-                         if (ipart == -1) print*, cellCenter(ison, ind_grid(j), dx)
+                         if (ddebug) write(*, '(a12, 1x, i8, 1x, i5, 1x, 3(f10.8, 1x))') &
+                              'projecting', idp(ipart), ind_grid(j), xp(ipart, 1:ndim)
+
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'projecting', ind_grid(j)
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
 
                          xp(ipart, 1:ndim) = cellCenter(ison, ind_grid(j), dx)
                          tp(ipart) = uold(icell, 1)
@@ -471,6 +526,8 @@ contains
                          ix = ii + 1
                          iy = jj + 1
                          iz = kk + 1
+                         if (ddebug) write(*, '(a12, 1x, i8, 1x, i5, 1x, 3(f10.8, 1x))') &
+                              'projected', idp(ipart), ind_grid(j), xp(ipart, 1:ndim)
                          exit
                       else
                          rand = rand - uold(icell, 1) / mass
@@ -478,10 +535,33 @@ contains
                    end do
                    ison = ison
                    icell = icell
-                else                                                ! case 3
+                else
+                   !~~~~~~~~~~~~~~~~~ Center particles ~~~~~~~~~~~~~~~~~~~~!
                    ison = 1
-                   if (ipart == -1) print*, 'from to', ipart
-                   if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+
+                   if (ddebug) write(*, '(a12, 1x, i8, 1x, i5, 1x, 2(f10.8, 1x), i4)') &
+                        'recentering', idp(ipart), ind_grid(j), xp(ipart, 1:ndim), ilevel
+                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'recentering', ind_grid(j)
+                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+
+                   ! DEBGU
+                   if (ddebug) then
+                      block
+                        integer :: fgrid, fpos, fcell
+
+                        fcell = father(ind_grid(j))
+                        fpos = (fcell-ncoarse-1)/ngridmax+1
+                        fgrid = fcell-ncoarse-(fpos-1)*ngridmax
+                        print*, '|        ', xp(ipart, 1:ndim) / dx
+                        print*, '|--      ', (xg(fgrid, 1:ndim)-skip_loc(1:ndim))*scale / dx
+                        print*, '\--      ', (xg(ind_grid(j), 1:ndim)-skip_loc(1:ndim))*scale / dx
+                        if (son(father(ind_grid(j))) /= ind_grid(j)) then
+                           print*, 'sadfj;aklsdfjas;kljdfa'
+                           stop
+                        end if
+
+                      end block
+                   end if
 
                    do dim = 1, ndim
                       if (x(dim) < 1.5) then
@@ -491,9 +571,7 @@ contains
                          ison = ison + 2**(dim-1)
                       end if
                    end do
-
-                   if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
-
+                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
                    iz = (ison-1) / 4 + 1
                    iy = (ison-1-4*(iz - 1)) / 2 + 1
                    ix = (ison-1-4*(iz - 1)-2*(iy - 1)) + 1
@@ -505,23 +583,18 @@ contains
                    tp(ipart) = uold(icell, 1)
 
                 end if
-             else
-                ison = 1 + (ix-1) + 2*(iy-1) + 4*(iz-1)
-
-                iskip = ncoarse + (ison-1)*ngridmax
-                icell = iskip + ind_grid(j)
              end if
              ! At this stage, we have icell and ison for the particle
 
+             !~~~~~~~~~~~~~~~~~ Compute flux ~~~~~~~~~~~~~~~~~~~~!
              ! Compute the outflux (<0)
              Fout = 0
              do dir = 1, twondim
-                ! Check that the neighbor cell in dir is not finer (in this case,
-                ! ignore flux (already treated above))
-                relLvl = neighborRelativeLevel(icell, ind_ngrid(j, 0:twotondim), &
+                ! Only use flux to same or coarser cells
+                relLvl(dir) = neighborRelativeLevel(icell, ind_ngrid(j, 0:twotondim), &
                      ind_ncell(j, ison, 0:twotondim), &
                      & dir)
-                if (relLvl < 1) then
+                if (relLvl(dir) < 1) then
                    call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                    if (flux < 0) Fout = Fout + flux
                 end if
@@ -532,62 +605,49 @@ contains
 
              call ranf(localseed, rand)
 
-             ! Move the particle
+             !~~~~~~~~~~~~~~~~~ Move along flux ~~~~~~~~~~~~~~~~~~~~!
              if (rand < -Fout/mass) then
                 ! Pick a direction
                 call ranf(localseed, rand)
 
                 do dir = 1, twondim
+                   if (relLvl(dir) == 1) cycle
                    call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                    if (rand < flux/Fout) then ! Move particle
                       ! 3 cases:
                       ! --------
-                      !
-                      ! 1. the neighbour cell is refined (a.k.a. has a
-                      ! son)
-                      ! 2. the neighbour cell is unrefined, of same
-                      ! level as current cell
-                      ! (their fathers are neighbors, or are the same)
-                      ! 3. the neighbour cell is unrefined, of coarser
-                      ! level as current cell
-                      ! (neighbour grid == 0)
+                      ! 1. the neighbour cell is refined
+                      ! 2. the neighbour cell is unrefined, as coarse as cell
+                      ! 3. the neighbour cell is unrefined, coarser than cell
 
-                      ! Case 1 has already been treated at a finer
-                      ! level, do nothing
-                      ! Case 2 is easy, shift the particle in the right
-                      ! direction
-                      ! Case 3 we juste move the particle in the center
-                      ! of the neighbour cell
-                      relLvl = neighborRelativeLevel(icell, ind_ngrid(j&
-                           &, 0:twondim), ind_ncell(j, ison, 0:twondim)&
-                           &, dir)
-                      if (relLvl == 1) then                            &
+                      if (relLvl(dir) == 1) then                            &
                            &                     ! case 1
-                                ! Nothing to do, it should have already been
-                                ! done at a finer level
-                           stop
-                      else if (relLvl == 0) then                       &
+                           ! Nothing to do, it should have already been
+                           ! done at a finer level
+                           print*, 'should not happen'
+                         stop
+                      else if (relLvl(dir) == 0) then                       &
                            &                     ! case 2
                            dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 |
                          ! 5,6->3
 
-                         if (ipart == -1) print*, 'from to', ipart
-                         if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move along flux 2', ind_grid(j)
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
                          if (mod(dir, 2) == 1) then ! going left
                             xp(ipart, dirm2) = xp(ipart, dirm2) - dx
                          else                       ! going right
                             xp(ipart, dirm2) = xp(ipart, dirm2) + dx
                          end if
-                         if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
                          tp(ipart) = uold(ind_ncell(j, ison, dir), 1)
 
-                      else if (relLvl == -1) then                      &
-                           &                     ! case 3
-                                ! get the center of the neighboring cell
+                         exit
+                      else if (relLvl(dir) == -1) then ! case 3
+                         ! get the center of the neighboring cell
 
-                                ! Get the index of neigh. in its grid
-                           indn = (ind_ncell(j, ison, dir) - ncoarse - 1)&
-                           &/ngridmax + 1
+                         ! Get the index of neigh. in its grid
+                         indn = (ind_ncell(j, ison, dir) - ncoarse - 1)&
+                              &/ngridmax + 1
 
                          ! Get the grid number
                          ind_ngrid_ncell = ind_ncell(j, ison, dir)&
@@ -597,9 +657,10 @@ contains
                          x(1:ndim) = cellCenter(indn,&
                               & ind_ngrid_ncell, dxcoarse)
 
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move along flux 3'
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+
                          do dim = 1, ndim
-                            if (ipart == -1) print*, 'from to', ipart
-                            if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
                             ! Detect when moving particles of more than half the box size
                             if (x(dim) - xp(ipart, dim) > 0.5d0) then
                                xp(ipart, dim) = x(dim) - 1d0
@@ -608,16 +669,15 @@ contains
                             else
                                xp(ipart, dim) = x(dim)
                             end if
-                            if (ipart == -1) print*, xp(ipart, 1:ndim) * 2**8
                          end do
+                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
 
                          tp(ipart) = uold(ind_ncell(j, ison, dir), 1)
-                      else
-                         print*, 'should not happen'
-                         stop
+                         exit
                       end if
 
-                      exit
+                      ! Important: do not exit here, else particles
+
                    else ! Increase proba for moving in next direction
                       if (flux < 0) rand = rand - flux / Fout
                    end if
@@ -625,13 +685,22 @@ contains
              end if
           end if
 
-          ! Next one
+          ! Check bad moves
+          call checkBadMove(xp(ipart, :), prevxp(:))
+          if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+
+          ! Mark particle as moved
           move_flag(ipart) = .false.
+
           ipart = nextp(ipart)
        end do
     end do
 
   contains
+    ! This function prevents the particles from jumping to the other side of the box
+    ! by limiting the maximum distance traveled to less than 0.5
+
+    ! Compute the influx in direction at a given location
     subroutine getFlux(dir, ii0, jj0, kk0, j, fluxes, flux)
       integer, intent(in)  :: dir, j
       integer, intent(in) :: ii0, jj0, kk0
@@ -645,15 +714,29 @@ contains
       ii = ii0
       jj = jj0
       kk = kk0
+      ! The sign is given so that a flux > 0 is an inflow into the cell
+      ! This is how the flux is stored:
+      !          3
+      !
+      !      +---|---+
+      !      |   v   |
+      !  1  ->       ->   2
+      !      |       |
+      !      +---|---+
+      !          v
+      !
+      !          4
+      !
       ! the sign is +1 when the direction is 1, 3, 5
       ! the sign is -1 when the direction is 2, 4, 6
       sign = 1
       if (mod(dir, 2) == 0) sign = -1
-      dim = dir / 3 + 1 ! so that 1,2 -> 1 & 3,4 -> 2 & 4,5 -> 3
+      dim = (dir-1) / 2 + 1 ! so that 1,2 -> 1 & 3,4 -> 2 & 4,5 -> 3
 
       ! Select the location given ii, jj, kk and the direction
       if (dim == 1)      then
          if (sign == -1) ii = ii + 1
+         jj = 1; kk = 1
       else if (dim == 2) then
          if (sign == -1) jj = jj + 1
          kk = 1
@@ -696,6 +779,7 @@ contains
 
     end function neighborRelativeLevel
 
+    ! Get the cells in direction (for example, direction=1 for cells on the left of grid)
     function getCells(direction) result (locs)
       integer, intent(in) :: direction
       integer, dimension(1:twotondim/2) :: locs
@@ -719,8 +803,22 @@ contains
     end function getCells
 
   end subroutine move_tracers_oct
-end module hooks
 
-!################################################################
-! Write your hooks here
-!################################################################
+  subroutine checkBadMove(xp, prevxp)
+    real(dp), dimension(1:ndim), intent(inout) :: xp
+    real(dp), dimension(1:ndim), intent(in) :: prevxp
+
+    integer :: dim
+
+    do dim = 1, ndim
+       if (xp(dim) - prevxp(dim) > 0.5d0) then
+          ! print*,'correcting -', xp(dim)
+          xp(dim) = xp(dim) - 1d0
+       else if (xp(dim) - prevxp(dim) < -0.5d0) then
+          ! print*,'correcting +', xp(dim)
+          xp(dim) = xp(dim) + 1d0
+       end if
+    end do
+
+  end subroutine checkBadMove
+end module hooks
