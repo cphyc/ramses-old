@@ -27,10 +27,8 @@ subroutine godunov_fine(ilevel)
 
   ! Reset move flag at each levelmin
   if (MC_tracer .and. ilevel==nlevelmax) then
-     ! print*, 'move_flag = .true.'
      move_flag = .true.
   end if
-  
 
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
@@ -42,6 +40,7 @@ subroutine godunov_fine(ilevel)
 
 111 format('   Entering godunov_fine for level ',i2)
 
+  
 end subroutine godunov_fine
 !###########################################################
 !###########################################################
@@ -438,7 +437,7 @@ subroutine godfine1(ind_grid, ncache, ilevel)
   use amr_commons
   use hydro_commons
   use poisson_commons
-  use hooks
+  use hooks, only : post_flux_hook
   implicit none
   integer::ilevel,ncache
   integer,dimension(1:nvector)::ind_grid
