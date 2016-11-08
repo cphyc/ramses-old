@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from glob import glob
 from partutils import read_output
+import os
 # Setup plot
 minorloc = MultipleLocator(base=1./2**8)
 majorloc = MultipleLocator(base=1./2**7)
@@ -15,17 +16,42 @@ majorloc = MultipleLocator(base=1./2**7)
 # ax.yaxis.set_minor_locator(minorloc)
 
 
-outputs = sorted(glob('output_*'))
-
 i = 0
 
-prevPos = None
+prevPos = cb = None
+limitSet = False
+outputs = []
+prefix = '.'
+
+def setPrefix(p = '.'):
+    global prefix
+    if os.path.isdir(p):
+        prefix = p
+    else:
+        raise Exception('%s is not a directory' % p)
+
+def refreshOutputs():
+    global prefix
+
+    print(prefix)
+    outputs = sorted(glob(os.path.join(prefix, 'output_*')))
+
+    return outputs
 
 
-def nextOutput():
-    global i, outputs, prevPos
+def nextOutput(nexti=None):
+    global i, prevPos, cb, limitSet
 
+    if nexti is not None and nexti >= 0:
+        i = nexti
+    elif nexti is not None and nexti < 0:
+        i = i + nexti
+    else:
+        i = i + 1
+
+    outputs = refreshOutputs()
     output = outputs[i]
+    print('reading %s' % output)
     ind, pos, vel, mass, lvl = read_output(output)
 
     if prevPos is None:
@@ -34,14 +60,31 @@ def nextOutput():
     dx = pos - prevPos
 
     ticks = np.linspace(0, 1, 2**8 + 1)
+    ax = plt.gca()
+
+    if limitSet:
+        xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
+    else:
+        xmin, xmax = 0, 1
+        ymin, ymax = 0, 1
+
     fig = plt.gcf()
     ax = fig.gca()
     ax.cla()
 
-    xmin, xmax = 0.45, 0.55
-    ymin, ymax = 0.75, 0.85
+    # xmin, xmax = 0.45, 0.55
+    # ymin, ymax = 0.4, 0.5
     mask = ((pos[0, :] >= xmin) * (pos[0, :] < xmax) *
             (pos[1, :] >= ymin) * (pos[1, :] < ymax))
+
+    nbin = 256
+    H, ex, ey = np.histogram2d(*(pos[:, :]), bins=nbin, range=[[0, 1], [0, 1]])
+    H = np.ma.array(H, mask=(H == 0))
+    plt.pcolormesh(ex, ey, H.T,
+                   vmin=1, vmax=64, cmap='viridis')
+    # ax.scatter(*pos[:, mask], c='blue')
+
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
     ax.grid('on')
@@ -50,13 +93,121 @@ def nextOutput():
               color='grey', alpha=.5,
               pivot='tip',
               linewidths=.5)
-    ax.scatter(*pos[:, mask], c='blue')
 
     plt.title('Output %s' % output)
+
+    limitSet = True
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
 
+    plt.grid('on')
+
     plt.draw_if_interactive()
-    i += 1
+    plt.setp(plt.xticks()[1], rotation=90)
+
     prevPos = pos.copy()
+
+def nextOutputHist(nexti=None):
+    global i, prevPos, cb, limitSet
+
+    if nexti is not None and nexti >= 0:
+        i = nexti
+    elif nexti is not None and nexti < 0:
+        i = i + nexti
+    else:
+        i = i + 1
+
+    outputs = refreshOutputs()
+    output = outputs[i]
+    print('Reading %s' % output)
+    ind, pos, vel, mass, lvl = read_output(output)
+
+    if prevPos is None:
+        prevPos = pos.copy()
+
+    dx = pos - prevPos
+
+    ticks = np.linspace(0, 1, 2**5 + 1)
+    ax = plt.gca()
+
+    if limitSet:
+        xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
+    else:
+        xmin, xmax = 0, 1
+        ymin, ymax = 0, 1
+
+    fig = plt.gcf()
+    ax = fig.gca()
+    ax.cla()
+
+    # xmin, xmax = 0.45, 0.55
+    # ymin, ymax = 0.4, 0.5
+    mask = ((pos[0, :] >= xmin) * (pos[0, :] < xmax) *
+            (pos[1, :] >= ymin) * (pos[1, :] < ymax))
+
+    nbin = 2**7
+    H, ex, ey = np.histogram2d(*pos[:, :], bins=nbin, range=[[0, 1], [0, 1]])
+    H = np.ma.array(H, mask=(H == 0))
+    plt.pcolormesh(ex, ey, H.T,
+                   #vmin=1, vmax=64,
+                   cmap='viridis')
+    # ax.scatter(*pos[:, mask], c='blue')
+
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.grid('on')
+    # ax.quiver(pos[0, mask], pos[1, mask], dx[0, mask], dx[1, mask],
+    #           scale_units='xy', angles='xy', scale=1,
+    #           color='grey', alpha=.5,
+    #           pivot='tip',
+    #           linewidths=.5)
+
+    plt.title('Output %s' % output)
+
+    limitSet = True
+
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+
+    plt.grid('on')
+
+    plt.draw_if_interactive()
+    plt.setp(plt.xticks()[1], rotation=90)
+    prevPos = pos.copy()
+
+def countFlux():
+    outputs = refreshOutputs()
+    prev = read_output(outputs[0])
+    for i in range(len(outputs) - 1):
+        curr = read_output(outputs[i+1])
+        ppos = prev[1]
+        cpos = curr[1]
+
+        surf1 = 0.473 # coarse
+        surf2 = 0.5   # between levels
+        surf3 = 0.516 # fine
+        phi1, phi2, phi3 = [((ppos < y) * (cpos > y)).sum()
+                            for y in [surf1, surf2, surf3]]
+        yield (phi1, phi2, phi3)
+        prev = curr
+
+def traceParticle(ids, begin=0, end=-1):
+    outputs = refreshOutputs()
+
+    ids = np.array(ids)
+    if end == -1:
+        end = len(outputs)
+    pos = np.zeros((len(ids), 2, end-begin))
+    for i, output in enumerate(outputs[begin:end]):
+        print(output)
+        _, X, _, _, _ = read_output(output)
+
+        pos[:, 0:2, i] = X[0:2, ids-1].T
+
+    c = ['red', 'green', 'blue', 'cyan', 'grey', 'yellow', 'black']
+    for i, _ in enumerate(ids):
+        plt.plot(*pos[i, :, :], color=c[i % len(c)])
+        plt.plot(*pos[i, :, -1], marker='o', color=c[i % len(c)])
+    return pos
