@@ -57,7 +57,7 @@ m_refine=10*0.0
 x_refine=10*0.5
 y_refine=10*0.75
 r_refine=1.0,0.93
-exp_refine=10*20
+exp_refine=10*2.0
 a_refine=10*0.5
 interpol_type=1
 ! levels            1    2    3    4    5
