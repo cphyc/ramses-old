@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+
 
 from glob import glob
 from tqdm import tqdm
 import os
 from os.path import join as pjoin
 from datetime import datetime
+import time
 import argparse
 
 import pymses
@@ -29,17 +32,21 @@ mpl.rcParams['figure.dpi'] = 120
 #################################
 parser = argparse.ArgumentParser(description='Plot')
 parser.add_argument('--glob', type=str, default='output_*',
-                    help='Input pattern')
+                    help='Input pattern (default: %(default)s)')
 parser.add_argument('--outdir', type=str, default='plots',
-                    help='Directory to store plots')
+                    help='Directory to store plots (default: %(default)s)')
 parser.add_argument('-f', '--format', type=str, default='png',
-                    help='Format of the outputs (png, pdf, …)')
+                    help='Format of the outputs (png, pdf, …, default %(default)s)')
+parser.add_argument('--each', type=int, default=1,
+                    help='Stray (default: (%default)s)')
+parser.add_argument('--once', action='store_true',
+                    help='Check if you do not want to loop forever')
+
 
 
 args = parser.parse_args()
 print(args)
 
-outputs = sorted(glob(args.glob))
 prefix = args.outdir
 ramsesdir = os.path.split(args.glob)[0]
 ramsesdir = '.' if ramsesdir == '' else ramsesdir
@@ -60,13 +67,13 @@ def oneOutput(output):
     r = pymses.RamsesOutput(ramsesdir, outputn, verbose=False)
 
     nbin = 2**7  # int(np.sqrt(map.map.shape[0]))
-    percell = 10.
+    percell = 5.
     vmin = 0
     vmax = 4
 
     def saveAndNotify(fname):
         plt.savefig(fname)  # , dpi=120)
-        print(fname)
+        # print(fname)
 
     plt.clf()
     ##########################################
@@ -136,7 +143,7 @@ def oneOutput(output):
     cb.set_label('density')
 
     plt.quiver(x, y, vx, vy,
-               scale_units='xy', scale=1, angles='xy', color='white')
+               scale_units='xy', scale=5, angles='xy', color='white')
 
     # Plot lvl contours (if need be)
     ncontours = np.ptp(lvlmap.map)
@@ -163,5 +170,28 @@ def oneOutput(output):
 
     return pos
 
-for output in tqdm(outputs[:70:2]):
-    oneOutput(output)
+if args.once:
+    outputs = sorted(glob(args.glob))
+    for output in tqdm(outputs[::args.each]):
+        oneOutput(output)
+else:
+    try:
+        NRETRYMAX = 300
+        lasti = 0
+        nretry = 0
+        stop = False
+        while not stop:
+            outputs = sorted(glob(args.glob))
+            _outputs = outputs[::args.each][lasti:]
+
+            for output in tqdm(_outputs):
+                oneOutput(output)
+                lasti += 1
+                nretry = 0
+            time.sleep(1)
+            nretry += 1
+            if nretry > NRETRYMAX:
+                print('Stopping after %sth retry. Nothing new.' % NRETRYMAX)
+                stop = True
+    except KeyboardInterrupt:
+        pass
