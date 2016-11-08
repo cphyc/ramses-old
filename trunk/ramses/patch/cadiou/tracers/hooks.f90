@@ -331,15 +331,23 @@ contains
     ! are at a coarser level) are treated and their particles moved into the current grid.
     do j = 1, nvector
        do dir = 1, twondim
-          if (ind_ngrid(j, dir) == 0) then ! No neighbor grid -> neighbor is an unrefined cell
-             ! Take cell in grid at boundary
-             if (mod(dir, 2) == 1) then ! Matches 1, 3, 5
-                ! Upper left (front) cell in 2D (3D)
-                ison = 1
-             else                       ! Matches 2, 4, 6
-                ! Lower right (back) cell in 2D (3D)
-                ison = twotondim
-             end if
+          if (mod(dir, 2) == 1) then
+             ison = 1
+          else
+             ison = twotondim
+          end if
+
+          relLvl(dir) = neighborRelativeLevel(ind_grid(j)+ncoarse+(ison-1)*ngridmax,&
+               ind_ngrid(j, 0:twotondim), &
+               ind_ncell(j, ison, 0:twotondim), &
+               dir)
+          ! x(1:ndim) = xg(ind_grid(j), 1:ndim)+skip_loc(1:ndim)
+          ! if (x(2) > 0.5 .and. x(2) < 0.527 .and. dir >= 3) then  ! first after bdry
+          !    print*, dir, relLvl(dir), x(1:ndim)
+          !    print*, ind_ngrid(j, dir)
+          ! end if
+
+          if (relLvl(dir) == -1) then ! No neighbor grid -> neighbor is an unrefined cell
              ! Get its neighbour in direction dir
              ncell = ind_ncell(j, ison, dir)
 
@@ -364,7 +372,7 @@ contains
                 call getFlux(dir, ix+1, iy+1, iz+1, j, fluxes, flux)
                 Fout = Fout + flux
                 if (flux > 0) then
-                   masses(k) = uold(ncoarse + (ison-1)*ngridmax + ind_grid(j), 1)
+                   masses(k) = flux !uold(ncoarse + (ison-1)*ngridmax + ind_grid(j), 1)
                 else
                    ! Store a 0 value so that we don't move particles into this one (flux<0)
                    masses(k) = 0
@@ -375,7 +383,7 @@ contains
 
              ! Skip to next direction if total flux < 0
              if (Fout < 0) then
-                exit
+                cycle
              end if
 
              ! Iterate over particles
@@ -392,16 +400,20 @@ contains
                    ! Decide whether or not to move it depending on the total flux
                    call ranf(localseed, rand)
 
-                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move from coarser?', dir, (dir-1)/2+1
-                   if (idp(ipart) == dbpart) print*, 'DEBUG: ', '                  ', ix, iy
-                   if (idp(ipart) == dbpart) then
+                   if (idp(ipart) == dbpart .or. ddebug) then
                       block
                         integer :: ii, jj
-                        do ii = 1, 3
-                           print*, 'DEBUG: F ', fluxes(j, ii, 1:3, 1, 1, dir/3+1)
+                        print*, 'DEBUG: ', 'move from coarser?', dir, (dir-1)/2+1
+                        print*, 'DEBUG: ', '                  ', ix+1, iy+1
+                        print*, 'DEBUG: ', '                  ', xp(ipart, :)
+                        print*, 'DEBUG: ', '                  ', (xg(ind_grid(j), :) - skip_loc(:))*scale
+
+                        do jj = 1, 3
+                           print*, 'DEBUG: ', fluxes(j, 1:3, jj, 1, 1, (dir-1)/2+1)
                         end do
-                        print*, 'DEBUG: mass ', mass
+                        print*, 'DEBUG: mass   ', mass
                         print*, 'DEBUG: masses ', masses(1:)
+                        print*, 'DEBUG: Fout   ', Fout
                       end block
                    end if
 
@@ -411,16 +423,18 @@ contains
                       do k = 1, twotondimo2
                          if (rand < masses(k) / masses(0)) then
                             ! Put particle at center of cell
-                            if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move from coarser!'
-                            if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+                            if (ddebug .or. idp(ipart) == dbpart) print*, 'DEBUG: ', 'move from coarser!'
+                            if (ddebug .or. idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
 
                             prevxp(1:ndim) = xp(ipart, 1:ndim)
                             xp(ipart, 1:ndim) = cellCenter(tmp_ind_cell(k), ind_grid(j), dx)
-                            call checkBadMove(xp(ipart, :), prevxp(:))
+                            call checkBadMove(xp(ipart, 1:ndim), prevxp(1:ndim))
+                            if (ddebug .or. idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
 
                             tp(ipart) = masses(k)
                             exit
                          else
+                            if (ddebug) print*, 'DEBUG: nope!', k, rand, rand-masses(k)/masses(0)
                             rand = rand - masses(k) / masses(0)
                          end if
                       end do
@@ -554,7 +568,7 @@ contains
                         fgrid = fcell-ncoarse-(fpos-1)*ngridmax
                         print*, '|        ', xp(ipart, 1:ndim) / dx
                         print*, '|--      ', (xg(fgrid, 1:ndim)-skip_loc(1:ndim))*scale / dx
-                        print*, '\--      ', (xg(ind_grid(j), 1:ndim)-skip_loc(1:ndim))*scale / dx
+                        print*, ' \-      ', (xg(ind_grid(j), 1:ndim)-skip_loc(1:ndim))*scale / dx
                         if (son(father(ind_grid(j))) /= ind_grid(j)) then
                            print*, 'sadfj;aklsdfjas;kljdfa'
                            stop
@@ -590,10 +604,10 @@ contains
              ! Compute the outflux (<0)
              Fout = 0
              do dir = 1, twondim
-                ! Only use flux to same or coarser cells
+                ! Only use outflux to same or coarser cells
                 relLvl(dir) = neighborRelativeLevel(icell, ind_ngrid(j, 0:twotondim), &
-                     ind_ncell(j, ison, 0:twotondim), &
-                     & dir)
+                     ind_ncell(j, ison, 0:twotondim), dir)
+
                 if (relLvl(dir) < 1) then
                    call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                    if (flux < 0) Fout = Fout + flux
@@ -616,17 +630,11 @@ contains
                    if (rand < flux/Fout) then ! Move particle
                       ! 3 cases:
                       ! --------
-                      ! 1. the neighbour cell is refined
+                      ! 1. the neighbour cell is refined (already skipped)
                       ! 2. the neighbour cell is unrefined, as coarse as cell
                       ! 3. the neighbour cell is unrefined, coarser than cell
 
-                      if (relLvl(dir) == 1) then                            &
-                           &                     ! case 1
-                           ! Nothing to do, it should have already been
-                           ! done at a finer level
-                           print*, 'should not happen'
-                         stop
-                      else if (relLvl(dir) == 0) then                       &
+                      if (relLvl(dir) == 0) then                       &
                            &                     ! case 2
                            dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 |
                          ! 5,6->3
@@ -641,8 +649,7 @@ contains
                          if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
                          tp(ipart) = uold(ind_ncell(j, ison, dir), 1)
 
-                         exit
-                      else if (relLvl(dir) == -1) then ! case 3
+                      else ! case 3
                          ! get the center of the neighboring cell
 
                          ! Get the index of neigh. in its grid
@@ -657,27 +664,26 @@ contains
                          x(1:ndim) = cellCenter(indn,&
                               & ind_ngrid_ncell, dxcoarse)
 
-                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'move along flux 3'
-                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
+                         if (idp(ipart) == dbpart .or. ddebug) print*, 'DEBUG: ', 'move along flux 3'
+                         if (idp(ipart) == dbpart .or. ddebug) print*, 'DEBUG: ', xp(ipart, :)
 
-                         do dim = 1, ndim
-                            ! Detect when moving particles of more than half the box size
-                            if (x(dim) - xp(ipart, dim) > 0.5d0) then
-                               xp(ipart, dim) = x(dim) - 1d0
-                            else if (x(dim) - xp(ipart, dim) < -0.5d0) then
-                               xp(ipart, dim) = x(dim) + 1d0
-                            else
-                               xp(ipart, dim) = x(dim)
-                            end if
-                         end do
+                         xp(ipart, 1:ndim) = x(1:ndim)
+                         ! do dim = 1, ndim
+                         !    ! Detect when moving particles of more than half the box size
+                         !    if (x(dim) - xp(ipart, dim) > 0.5d0) then
+                         !       xp(ipart, dim) = x(dim) - 1d0
+                         !    else if (x(dim) - xp(ipart, dim) < -0.5d0) then
+                         !       xp(ipart, dim) = x(dim) + 1d0
+                         !    else
+                         !       xp(ipart, dim) = x(dim)
+                         !    end if
+                         ! end do
                          if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
 
                          tp(ipart) = uold(ind_ncell(j, ison, dir), 1)
-                         exit
                       end if
 
-                      ! Important: do not exit here, else particles
-
+                      exit
                    else ! Increase proba for moving in next direction
                       if (flux < 0) rand = rand - flux / Fout
                    end if
@@ -772,7 +778,7 @@ contains
          pos = (ind_ncell(direction)-ncoarse-1)/ngridmax+1
          ind_ngrid_ncell = ind_ncell(direction)-ncoarse-(pos-1)*ngridmax
 
-         ! If the neighbor cell is in the same/a neighbor grid
+         ! If the neighbor cell is in the same grid or in a neighbor grid
          if (ind_ngrid_ncell == ind_ngrid(direction) .or. ind_ngrid_ncell == ind_ngrid(0)) then
             neighborRelativeLevel = 0
          else
