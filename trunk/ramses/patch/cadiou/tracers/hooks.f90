@@ -333,10 +333,10 @@ contains
        do dir = 1, twondim
           if (ind_ngrid(j, dir) == 0) then ! No neighbor grid -> neighbor is an unrefined cell
              ! Take cell in grid at boundary
-             if (mod(dir, 2) == 1) then
+             if (mod(dir, 2) == 1) then ! Matches 1, 3, 5
                 ! Upper left (front) cell in 2D (3D)
                 ison = 1
-             else
+             else                       ! Matches 2, 4, 6
                 ! Lower right (back) cell in 2D (3D)
                 ison = twotondim
              end if
@@ -697,18 +697,16 @@ contains
     end do
 
   contains
-    ! This function prevents the particles from jumping to the other side of the box
-    ! by limiting the maximum distance traveled to less than 0.5
 
     ! Compute the influx in direction at a given location
     subroutine getFlux(dir, ii0, jj0, kk0, j, fluxes, flux)
       integer, intent(in)  :: dir, j
-      integer, intent(in) :: ii0, jj0, kk0
+      integer, intent(in)  :: ii0, jj0, kk0
       real(dp), intent(in) :: fluxes(:,:,:,:,:,:)
 
       real(dp), intent(out) :: flux
 
-      integer :: sign ! this is the sign to get fluxes from cell out of it
+      integer :: sign ! this is the sign to get fluxes from inside to outside
       integer :: dim, nxny, ii, jj, kk
 
       ii = ii0
@@ -734,15 +732,21 @@ contains
       dim = (dir-1) / 2 + 1 ! so that 1,2 -> 1 & 3,4 -> 2 & 4,5 -> 3
 
       ! Select the location given ii, jj, kk and the direction
-      if (dim == 1)      then
-         if (sign == -1) ii = ii + 1
-         jj = 1; kk = 1
-      else if (dim == 2) then
-         if (sign == -1) jj = jj + 1
-         kk = 1
-      else
-         if (sign == -1) kk = kk + 1
+      if (sign == -1) then
+         if      (dim == 1) then
+            ii = ii + 1
+         else if (dim == 2) then
+            jj = jj + 1
+         else if (dim == 3) then
+            kk = kk + 1
+         end if
       end if
+
+#IF NDIM==1
+      jj=1; kk=1
+#ELSEIF NDIM==2
+      kk=1
+#ENDIF
 
       flux = sign*fluxes(j, ii, jj, kk, 1, dim)
     end subroutine getFlux
