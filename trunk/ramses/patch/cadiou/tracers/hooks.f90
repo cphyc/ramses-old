@@ -690,13 +690,9 @@ contains
                       ! 3. the neighbour cell is unrefined, coarser than cell
 
                       if (relLvl(dir) == 1) then
-                         ! Store instructions for later
-                         print*,'moving', ipart, 'later (in ', ind_grid(j), ', ',dir,')'
-                         stop
-                         ! if (cpu_map(ind_ngrid(j, dir)) /= myid) then
-                         !    print*,'moving', ipart, 'later (in ', ind_grid(j), ', ',dir,')'
-                         !    move_flag(ipart) = dir
-                         ! end if
+                         ! Store instructions for later (if expected to move out of CPU)
+                         print*,'moving', ipart, 'later (into ', ind_grid(j), ', ',dir,')'
+                         move_flag(ipart) = dir
 
                       else if (relLvl(dir) == 0) then  ! case 2
                          dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 | 5,6->3
