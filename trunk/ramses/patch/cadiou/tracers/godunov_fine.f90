@@ -25,9 +25,9 @@ subroutine godunov_fine(ilevel)
   ! Loop over active grids by vector sweeps
   ncache=active(ilevel)%ngrid
 
-  ! Reset move flag at each levelmin
+  ! Reset move flag
   if (MC_tracer .and. ilevel==nlevelmax) then
-     move_flag = .true.
+     move_flag = 0
   end if
 
   do igrid=1,ncache,nvector

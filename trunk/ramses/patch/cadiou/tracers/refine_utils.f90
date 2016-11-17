@@ -330,9 +330,9 @@ subroutine refine_fine(ilevel)
   use amr_commons
   use hooks
   implicit none
-#ifndef WITHOUTMPI
-  include 'mpif.h'
-#endif
+! #ifndef WITHOUTMPI
+!   include 'mpif.h'
+! #endif
   integer::ilevel
   !---------------------------------------------------------
   ! This routine refines cells at level ilevel if cells

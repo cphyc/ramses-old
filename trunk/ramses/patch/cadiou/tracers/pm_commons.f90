@@ -40,7 +40,7 @@ module pm_commons
   real(dp),allocatable,dimension(:,:)::xp        ! Positions
   real(dp),allocatable,dimension(:,:)::vp        ! Velocities
   real(dp),allocatable,dimension(:)  ::mp        ! Masses
-  logical,allocatable,dimension(:)   ::move_flag ! Move flag
+  integer,allocatable,dimension(:)   ::move_flag ! Move flag: 0 for unmoved, 2^ndim+1 for moved, else give the direction to move to
 #ifdef OUTPUT_PARTICLE_POTENTIAL
   real(dp),allocatable,dimension(:)  ::ptcl_phi  ! Potential of particle added by AP for output purposes
 #endif
