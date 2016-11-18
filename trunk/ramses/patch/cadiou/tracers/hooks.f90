@@ -44,7 +44,7 @@ contains
 
        ! Very unlikely to have more than ngridmax borders
        allocate(&
-            em_face_flux(1:ngridmax, 1:twotondim/2), &
+            em_face_flux(1:twotondim/2, 1:ngridmax), &
             em_pos_from(1:ngridmax), &
             em_grid_from(1:ngridmax), &
             em_grid_to(1:ngridmax), &
@@ -407,30 +407,35 @@ contains
              end if
 
              ! Detect boundaries between CPUs
-             if (cpu_map(ind_ngrid_ncell) /= myid) then
+             icpu = cpu_map(father(ind_ngrid_ncell))
+
+             if (icpu /= myid) then
                 em_count = em_count + 1
 
-                ! TODO: improve this very very bad way of doing here
-                icpu = cpu_map(ncell)
+                ! Get origin cell
                 do k = 1, reception(icpu, ilevel-1)%ngrid
                    if (reception(icpu, ilevel-1)%igrid(k) == ind_ngrid_ncell) then
                       em_grid_from(em_count) = k
+                      exit
                    end if
                 end do
+                if (k == reception(icpu, ilevel-1)%ngrid+1) then
+                   print*, 'waaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                   print*, (xg(ind_ngrid_ncell, :)-skip_loc(1:ndim))/scale
+                   stop
+                end if
+
+                ! Get reception cell
                 do k = 1, emission(icpu, ilevel)%ngrid
                    if (emission(icpu, ilevel)%igrid(k) == ind_grid(j)) then
                       em_grid_to(em_count) = k
+                      exit
                    end if
                 end do
 
-                ! Get location of origin cell in its grid
-                print*, 'storing', ind_ngrid_ncell, reception(icpu, ilevel-1)%igrid(em_grid_from(em_count))
-                print*, '   from', (xg(ind_ngrid_ncell, 1:ndim)-skip_loc(1:ndim))*scale
-                print*, '   to  ', (xg(ind_grid(j), 1:ndim)-skip_loc(1:ndim))*scale
-
                 ! Store instructions to move particles into grid.
                 em_pos_from(em_count)  = npos
-                em_to_cpu(em_count)    = cpu_map(ind_ngrid_ncell)
+                em_to_cpu(em_count)    = icpu
                 em_level(em_count)     = ilevel
 
                 ! Reverse direction (1 <-> 2, 3<-> 4, 5<->6)
@@ -440,8 +445,12 @@ contains
                    em_dir(em_count)  = dir - 1
                 end if
 
+                ! print*, 'storing', ind_ngrid_ncell, reception(icpu, ilevel-1)%igrid(em_grid_from(em_count)), myid, '->', cpu_map(ind_ngrid_ncell), em_grid_to(j)
+                ! print*, '   from', (xg(ind_ngrid_ncell, 1:ndim)-skip_loc(1:ndim))*scale
+                ! print*, '   to  ', (xg(ind_grid(j), 1:ndim)-skip_loc(1:ndim))*scale
+
                 do k = 1, twotondimo2
-                   em_face_flux(em_count, k) = weights(k)
+                   em_face_flux(k, em_count) = weights(k)
                 end do
 
                 cycle
@@ -691,7 +700,9 @@ contains
 
                       if (relLvl(dir) == 1) then
                          ! Store instructions for later (if expected to move out of CPU)
-                         print*,'moving', ipart, 'later (into ', ind_grid(j), ', ',dir,')'
+                         if (cpu_map(father(ind_grid(j))) /= myid) &
+                              print*,'moving', ipart, 'later (into ', ind_grid(j), ', ',dir,', ', &
+                              cpu_map(father(ind_grid(j))), ')'
                          move_flag(ipart) = dir
 
                       else if (relLvl(dir) == 0) then  ! case 2
@@ -848,24 +859,25 @@ contains
   ! This routine loop over all grid that contain particles to emit and emit them
   ! it then receives particles to move
   subroutine delay_move()
-    integer :: i, j, k, cpu, ierr, count, ipart
+    integer :: i, j, k, icpu, ierr, count, ipart
 
     integer :: msg_len(1:ncpu)
     integer :: ppfrom, pgfrom, pto, pdir, pcpu
     integer, dimension(1:ngridmax) :: tmp_grid_from, tmp_pos_from, tmp_cell_from, tmp_grid_to, tmp_dir, tmp_to_cpu, tmp_level
-    integer, dimension(1:ngridmax, 1:twotondim/2) :: tmp_flux
+    real(dp), dimension(1:twotondim/2, 1:ngridmax) :: tmp_flux
     real(dp), dimension(0:twotondim/2, 1:ndim) :: xc
     real(dp) :: rand, dx, dxcoarse, tot_flux
     real(dp), dimension(1:ndim) :: prevxp
 
     integer :: igrid, ison, iskip
+    integer :: ndir
     integer, dimension(1:twotondim/2) :: ind_cells
 
 #ifndef WITHOUTMPI
-    do cpu = 1, ncpu
+    do icpu = 1, ncpu
        ! Prepare data to be transferred
-       if (cpu == myid) then
-          ! Prepare data
+       if (icpu == myid) then
+          ! Prepare data (only send one copy)
           count = 0
           do i = 1, em_count
              if (i == 1) then
@@ -879,19 +891,22 @@ contains
                   em_to_cpu(i)    /= pcpu) then
 
                 count = count + 1
+
                 tmp_grid_from(count) = em_grid_from(i)
                 tmp_pos_from(count)  = em_pos_from(i)
                 tmp_grid_to(count)   = em_grid_to(i)
                 tmp_dir(count)       = em_dir(i)
                 tmp_to_cpu(count)    = em_to_cpu(i)
                 tmp_level(count)     = em_level(i)
-                tmp_flux(count, :)   = em_face_flux(i, :)
+                tmp_flux(:, count)   = em_face_flux(:, i)
 
                 ppfrom = em_pos_from(i)
                 pgfrom = em_grid_from(i)
                 pto   = em_grid_to(i)
                 pdir  = em_dir(i)
                 pcpu  = em_to_cpu(i)
+             else
+                print*, 'skipping it!', em_grid_from(i), em_grid_to(i)
              end if
 
           end do
@@ -899,42 +914,50 @@ contains
        end if
 
        ! Send data
-       call MPI_Bcast(count,             1, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
-       call MPI_Bcast(tmp_grid_from, count, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
-       call MPI_Bcast(tmp_pos_from,  count, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
-       call MPI_Bcast(tmp_grid_to,   count, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
-       call MPI_Bcast(tmp_dir,       count, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
-       call MPI_Bcast(tmp_to_cpu,    count, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
-       call MPI_Bcast(tmp_level,     count, MPI_INTEGER, cpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(count,             1, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(tmp_grid_from, count, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(tmp_pos_from,  count, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(tmp_grid_to,   count, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(tmp_dir,       count, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(tmp_to_cpu,    count, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
+       call MPI_Bcast(tmp_level,     count, MPI_INTEGER, icpu-1, MPI_COMM_WORLD, ierr)
        call MPI_Bcast(tmp_flux, twotondim/2*count, MPI_DOUBLE_PRECISION, &
-            cpu-1, MPI_COMM_WORLD, ierr)
+            icpu-1, MPI_COMM_WORLD, ierr)
 
        ! Translate index within virtual boundaries into local grid index
        do j = 1, count
           if (tmp_to_cpu(j) == myid) then
-             tmp_grid_from(j) = emission(cpu, tmp_level(j)-1)%igrid(tmp_grid_from(j))
+             print*, tmp_grid_from(j)
+             tmp_grid_from(j) = emission(icpu, tmp_level(j)-1)%igrid(tmp_grid_from(j))
              iskip = ncoarse + (tmp_pos_from(j)-1)*ngridmax
              tmp_cell_from(j) = iskip + tmp_grid_from(j)
 
-             tmp_grid_to(j) = reception(cpu, tmp_level(j))%igrid(tmp_grid_to(j))
-          else
-             tmp_grid_from(j) = 0
-             tmp_cell_from(j) = 0
+             ! print*, myid, icpu, tmp_level(j)
+             tmp_grid_to(j) = reception(icpu, tmp_level(j))%igrid(tmp_grid_to(j))
           end if
        end do
 
        do j = 1, count
           if (tmp_to_cpu(j) == myid) then
-             print*, 'got    ', tmp_cell_from(j)
-             print*, '  from ', (xg(tmp_grid_from(j), 1:ndim)-skip_loc(1:ndim))*scale
-             print*, '  to   ', (xg(tmp_grid_to(j),   1:ndim)-skip_loc(1:ndim))*scale
+             ! print*, 'got    ', tmp_cell_from(j), icpu, '->', tmp_to_cpu(j), tmp_dir(j)
+             ! print*, '  from ', (xg(tmp_grid_from(j), 1:ndim)-skip_loc(1:ndim))*scale
+             ! print*, '  to   ', (xg(tmp_grid_to(j),   1:ndim)-skip_loc(1:ndim))*scale
+
+             ! Compute dx
+             dx = 0.5d0**tmp_level(j)
+             dxcoarse = 2d0 * dx
 
              ! Compute origin (coarse) cell center
-             ! TODO: correct dx
              xc(0, 1:ndim) = cellCenter(tmp_pos_from(j), tmp_grid_from(j), dxcoarse)
 
              ! Get the location of the target cells
-             ind_cells = getCells(tmp_dir(j))
+             if (mod(tmp_dir(j), 2) == 0) then ! 2->1, 4->3, 6->5
+                ndir = tmp_dir(j) - 1
+             else
+                ndir = tmp_dir(j) + 1
+             end if
+
+             ind_cells = getCells(ndir)
 
              ! Compute target (fine) cell centers
              do k = 1, twotondim/2
@@ -944,21 +967,32 @@ contains
              ! Loop over tagged particles in origin cell
              ipart = headp(tmp_grid_from(j))
 
+             ! Computing total flux
+             tot_flux = 0
+             do k = 1, twotondim / 2
+                tot_flux = tot_flux + tmp_flux(k, j)
+             end do
+
              do i = 1, numbp(tmp_grid_from(j))
-                print*, 'testing', ipart, tmp_dir(j), move_flag(ipart)
+                ! if (move_flag(ipart) > 0) print*, 'testing', ipart, tmp_dir(j), move_flag(ipart)
+                ! if (move_flag(ipart) > 0 .and. move_flag(ipart) == tmp_dir(j)) then
+                !    print*, xp(ipart, 1:ndim)
+                !    print*, xc(0, 1:ndim)
+                ! end if
                 if (move_flag(ipart) == tmp_dir(j) .and. &
                      all(xp(ipart, 1:ndim) == xc(0, 1:ndim))) then
 
-                   print*, 'now moving', ipart
+                   ! print*, 'now moving', ipart
                    ! Distribute following fluxes
                    call ranf(localseed, rand)
 
-                   tot_flux = sum(tmp_flux)
+                   ! print*, 'tot_flux', tot_flux, tmp_flux(:, j)
 
                    prevxp = xp(ipart, 1:ndim)
                    do k = 1, twotondim / 2
                       if (rand < tmp_flux(k, j) / tot_flux) then
                          xp(ipart, 1:ndim) = xc(k, 1:ndim)
+                         ! print*, 'moved', ipart, 'to', xc(k, 1:ndim)
                          exit
                       else
                          rand = rand - tmp_flux(k, j) / tot_flux
