@@ -41,7 +41,8 @@ parser.add_argument('--each', type=int, default=1,
                     help='Stray (default: (%default)s)')
 parser.add_argument('--once', action='store_true',
                     help='Check if you do not want to loop forever')
-
+parser.add_argument('--zoom', action='store_true',
+                    help='Zoom on the region x = [0.4; 0.6]')
 
 
 args = parser.parse_args()
@@ -57,7 +58,6 @@ if not os.path.exists(prefix):
     os.mkdir(prefix)
 
 prevpos = None
-
 
 def oneOutput(output):
     global prevpos

@@ -75,10 +75,12 @@ def nextOutput(nexti=None):
 
     # xmin, xmax = 0.45, 0.55
     # ymin, ymax = 0.4, 0.5
-    mask = ((pos[0, :] >= xmin) * (pos[0, :] < xmax) *
-            (pos[1, :] >= ymin) * (pos[1, :] < ymax))
+    mask = (((pos[0, :] >= xmin) * (pos[0, :] < xmax) *
+             (pos[1, :] >= ymin) * (pos[1, :] < ymax)) +
+            ((prevPos[0, :] >= xmin) * (prevPos[0, :] < xmax) *
+             (prevPos[1, :] >= ymin) * (prevPos[1, :] < ymax)))
 
-    nbin = 256
+    nbin = 512 #256
     H, ex, ey = np.histogram2d(*(pos[:, :]), bins=nbin, range=[[0, 1], [0, 1]])
     H = np.ma.array(H, mask=(H == 0))
     plt.pcolormesh(ex, ey, H.T,
@@ -121,7 +123,7 @@ def nextOutputHist(nexti=None):
     outputs = refreshOutputs()
     output = outputs[i]
     print('Reading %s' % output)
-    ind, pos, vel, mass, lvl = read_output(output)
+    ind, pos, vel, mass, lvl, cpus = read_output(output)
 
     if prevPos is None:
         prevPos = pos.copy()
@@ -147,7 +149,7 @@ def nextOutputHist(nexti=None):
     mask = ((pos[0, :] >= xmin) * (pos[0, :] < xmax) *
             (pos[1, :] >= ymin) * (pos[1, :] < ymax))
 
-    nbin = 2**7
+    nbin = 2**4
     H, ex, ey = np.histogram2d(*pos[:, :], bins=nbin, range=[[0, 1], [0, 1]])
     H = np.ma.array(H, mask=(H == 0))
     plt.pcolormesh(ex, ey, H.T,
@@ -155,6 +157,23 @@ def nextOutputHist(nexti=None):
                    cmap='viridis')
     # ax.scatter(*pos[:, mask], c='blue')
 
+    f = 1
+    cpuMap = np.zeros((f*nbin, f*nbin))
+    # Getting cpu map
+    for cpu in range(cpus.min(), cpus.max()+1):
+        mask = (cpus == cpu)
+
+        # get center of domain and annotate it
+        cx, cy = np.mean(pos[:, mask], axis=1)
+        plt.annotate(str(cpu), (cx, cy))
+        # get map for cpu
+        Hcpu, _, _ = np.histogram2d(*pos[:, mask], bins=f*cpuMap.shape[0], range=[[0, 1], [0, 1]])
+        tmparr = cpu*(Hcpu.flatten() > 0)
+        cpuMap += np.reshape(tmparr, Hcpu.shape)
+
+    if cpus.min() < cpus.max():
+        plt.contour(cpuMap.T, extent=(ex[0], ex[-1], ey[0], ey[-1]),
+                    levels=list(range(cpus.min(), cpus.max())), alpha=0.5)
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
     ax.grid('on')
