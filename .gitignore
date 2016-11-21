@@ -5,3 +5,4 @@ ramses2d
 ramses3d
 bin/
 output_*/
+*.png
