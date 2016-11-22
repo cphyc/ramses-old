@@ -34,6 +34,7 @@ bound_type= 2, 2
 nregion=1
 region_type(1)='square'
 d_region=+1.0
+u_region=+0.05
 v_region=+1.0
 x_center=1.0
 y_center=1.0
@@ -42,7 +43,7 @@ y_center=1.0
 &OUTPUT_PARAMS
 foutput=1
 noutput=1
-tout=5
+tout=0.1
 /
 
 &HYDRO_PARAMS
@@ -56,9 +57,9 @@ scheme='muscl'
 m_refine=10*0.0
 x_refine=10*0.5
 y_refine=10*0.75
-r_refine=1.0,0.93
-exp_refine=10*2.0
-a_refine=10*0.5
+r_refine=1.0,0.5
+exp_refine=10*1.0
+a_refine=10*1.9
 interpol_type=1
 ! levels            1    2    3    4    5
 /

@@ -6,8 +6,9 @@ from glob import glob
 from partutils import read_output
 import os
 # Setup plot
-minorloc = MultipleLocator(base=1./2**8)
-majorloc = MultipleLocator(base=1./2**7)
+minorloc = MultipleLocator(base=1./2**5)
+majorloc = MultipleLocator(base=1./2**6)
+# ticks = np.linspace(0, 1, 2**4)
 
 # ax.xaxis.set_major_locator(majorloc)
 # ax.xaxis.set_minor_locator(minorloc)
@@ -52,14 +53,14 @@ def nextOutput(nexti=None):
     outputs = refreshOutputs()
     output = outputs[i]
     print('reading %s' % output)
-    ind, pos, vel, mass, lvl = read_output(output)
+    ind, pos, vel, mass, lvl, cpu = read_output(output)
 
     if prevPos is None:
         prevPos = pos.copy()
 
     dx = pos - prevPos
 
-    ticks = np.linspace(0, 1, 2**8 + 1)
+    ticks = np.linspace(0, 1, 2**6 + 1)
     ax = plt.gca()
 
     if limitSet:

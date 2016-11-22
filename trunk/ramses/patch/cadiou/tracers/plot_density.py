@@ -18,6 +18,8 @@ from pymses.analysis.slicing import SliceMap
 from pymses.analysis.operator import ScalarOperator, MaxLevelOperator
 from pymses.analysis import Camera
 
+from numba import jit
+
 from partutils import read_output
 #################################
 # Viewing config
@@ -67,7 +69,7 @@ def oneOutput(output):
     r = pymses.RamsesOutput(ramsesdir, outputn, verbose=False)
 
     nbin = 2**7  # int(np.sqrt(map.map.shape[0]))
-    percell = 5.
+    percell = 50
     vmin = 0
     vmax = 4
 
@@ -111,6 +113,12 @@ def oneOutput(output):
                vxmap.map.T[::xs, ::ys], vymap.map.T[::xs, ::ys],
                angles='xy',
                scale=70, scale_units='xy')
+    if args.zoom:
+        plt.xlim(0.4, 0.6)
+    else:
+        plt.xlim(0, 1)
+
+    plt.ylim(0, 1)
 
     ##########################################
     # Particles
@@ -154,7 +162,12 @@ def oneOutput(output):
                                        lvlmap.map.max()-0.5,
                                        ncontours),
                     alpha=1)
-    plt.xlim(0, 1)
+
+    if args.zoom:
+        plt.xlim(0.4, 0.6)
+    else:
+        plt.xlim(0, 1)
+
     plt.ylim(0, 1)
 
     plt.suptitle('$t=%.3f$' % r.info['time'])

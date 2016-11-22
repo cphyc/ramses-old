@@ -16,9 +16,9 @@ MC_tracer=.true.
 
 &AMR_PARAMS
 levelmin=7
-levelmax=7
-ngridmax=10000
-npartmax=100000
+levelmax=8
+ngridmax=9000
+npartmax=400000
 nexpand=1
 boxlen=1.0
 /
@@ -38,9 +38,9 @@ x_center=0.5
 /
 
 &OUTPUT_PARAMS
-foutput=20
+foutput=1
 noutput=1
-tout=10
+tout=1
 /
 
 &HYDRO_PARAMS
