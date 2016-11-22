@@ -505,7 +505,11 @@ contains
        ipart = headp(ind_grid(j))
        do i = 1, numbp(ind_grid(j))
 
+          prevxp(1:ndim) = xp(ipart, 1:ndim)
+
           if (mp(ipart) == 0d0 .and. move_flag(ipart) == 0) then
+             ! Mark particle as treated
+             move_flag(ipart) = twotondim + 1
 
              ! Find cell in which the particle is
              ! see amr/refine_utils.f90:202
@@ -656,7 +660,7 @@ contains
                 ! Pick a direction
                 call ranf(localseed, rand)
 
-                do dir = 1, twondim
+                dir_loop: do dir = 1, twondim
                    call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                    if (rand < flux/Fout) then ! Move particle
                       ! 3 cases:
@@ -670,29 +674,20 @@ contains
                          if (cpu_map(father(ind_grid(j))) /= myid) &
                               print*,'moving', ipart, 'later (into ', ind_grid(j), ', ',dir,', ', &
                               cpu_map(father(ind_grid(j))), ')'
+
+                         ! Tag particle as 'to be moved later'
                          move_flag(ipart) = dir
 
                       else if (relLvl(dir) == 0) then  ! case 2
                          dirm2 = (dir - 1) / 2 + 1 ! 1,2->1 | 3,4->2 | 5,6->3
 
-                         if (ddebug .or. idp(ipart) == dbpart) print*, 'DEBUG: ', 'move along flux 2', ind_grid(j)
-                         if (ddebug .or. idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
-
-                         prevxp(:) = xp(ipart, :)
                          if (mod(dir, 2) == 1) then ! going left
                             xp(ipart, dirm2) = xp(ipart, dirm2) - dx
                          else                       ! going right
                             xp(ipart, dirm2) = xp(ipart, dirm2) + dx
                          end if
-                         if (ddebug .or. idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
-                         tp(ipart) = uold(ind_ncell(j, ison, dir), 1)
 
-                         ! Check bad moves
-                         call checkBadMove(xp(ipart, 1:ndim), prevxp(1:ndim))
-                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
-
-                         ! Mark particle as moved
-                         move_flag(ipart) = twotondim + 1
+                         ! No need to mark particle, already done
 
                       else ! case 3
                          ! Get the index of neigh. in its grid
@@ -704,34 +699,24 @@ contains
                               &-ncoarse-(indn-1)*ngridmax
 
                          ! Set particle in cell (at a coarser level)
-                         prevxp(:) = xp(ipart, :)
-                         x(1:ndim) = cellCenter(indn,&
+                         xp(ipart, 1:ndim) = cellCenter(indn,&
                               & ind_ngrid_ncell, dxcoarse)
 
-                         if (idp(ipart) == dbpart .or. ddebug) print*, 'DEBUG: ', 'move along flux 3'
-                         if (idp(ipart) == dbpart .or. ddebug) print*, 'DEBUG: ', xp(ipart, :)
-
-                         xp(ipart, 1:ndim) = x(1:ndim)
-
-                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
-
                          tp(ipart) = uold(ind_ncell(j, ison, dir), 1)
-                         ! Check bad moves
-                         call checkBadMove(xp(ipart, 1:ndim), prevxp(1:ndim))
-                         if (idp(ipart) == dbpart) print*, 'DEBUG: ', xp(ipart, :)
 
-                         ! Mark particle as moved
-                         move_flag(ipart) = twotondim + 1
-
+                         ! No need to mark particle, already done
                       end if
 
-                      exit
+                      exit dir_loop
                    else ! Increase proba for moving in next direction
                       if (flux < 0) rand = rand - flux / Fout
                    end if
-                end do
+                end do dir_loop
              end if
           end if
+
+          ! Check bad moves (projection, centering, moving, etc…)
+          call checkBadMove(xp(ipart, 1:ndim), prevxp(1:ndim))
 
           ipart = nextp(ipart)
        end do
