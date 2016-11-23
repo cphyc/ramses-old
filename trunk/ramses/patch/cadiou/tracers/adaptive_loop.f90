@@ -173,7 +173,7 @@ subroutine adaptive_loop
 #ifndef WITHOUTMPI
 
      ! MC tracer patch
-     ! if (MC_tracer) call delay_move
+     if (MC_tracer) call delay_move
 
      tt2=MPI_WTIME()
      if(mod(nstep_coarse,ncontrol)==0)then
