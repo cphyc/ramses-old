@@ -415,9 +415,10 @@ contains
                    end if
                 end do
                 if (k == reception(icpu, ilevel-1)%ngrid+1) then
+                   ! This should not happen !
                    print*, 'waaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
                    print*, (xg(ind_ngrid_ncell, :)-skip_loc(1:ndim))/scale
-                   stop
+                   cycle direction !stop
                 end if
 
                 ! Get reception cell
@@ -439,10 +440,6 @@ contains
                 else
                    em_dir(em_count)  = dir - 1
                 end if
-
-                ! print*, 'storing', ind_ngrid_ncell, reception(icpu, ilevel-1)%igrid(em_grid_from(em_count)), myid, '->', cpu_map(ind_ngrid_ncell), em_grid_to(j)
-                ! print*, '   from', (xg(ind_ngrid_ncell, 1:ndim)-skip_loc(1:ndim))*scale
-                ! print*, '   to  ', (xg(ind_grid(j), 1:ndim)-skip_loc(1:ndim))*scale
 
                 do k = 1, twotondimo2
                    em_face_flux(k, em_count) = weights(k)
@@ -671,9 +668,8 @@ contains
 
                       if (relLvl(dir) == 1) then
                          ! Store instructions for later (if expected to move out of CPU)
-                         if (cpu_map(father(ind_grid(j))) /= myid) &
-                              print*,'moving', ipart, 'later (into ', ind_grid(j), ', ',dir,', ', &
-                              cpu_map(father(ind_grid(j))), ')'
+                         ! print*,'moving', ipart, 'later (into ', ind_grid(j), ', ',dir,', ', &
+                         !      cpu_map(father(ind_grid(j))), ')'
 
                          ! Tag particle as 'to be moved later'
                          move_flag(ipart) = dir
@@ -861,7 +857,7 @@ contains
                 pdir  = em_dir(i)
                 pcpu  = em_to_cpu(i)
              else
-                print*, 'skipping it!', em_grid_from(i), em_grid_to(i)
+                ! print*, 'skipping it!', em_grid_from(i), em_grid_to(i)
              end if
 
           end do
@@ -882,7 +878,7 @@ contains
        ! Translate index within virtual boundaries into local grid index
        do j = 1, count
           if (tmp_to_cpu(j) == myid) then
-             print*, tmp_grid_from(j)
+             ! print*, tmp_grid_from(j)
              tmp_grid_from(j) = emission(icpu, tmp_level(j)-1)%igrid(tmp_grid_from(j))
              iskip = ncoarse + (tmp_pos_from(j)-1)*ngridmax
              tmp_cell_from(j) = iskip + tmp_grid_from(j)
