@@ -604,6 +604,11 @@ subroutine godfine1(ind_grid, ncache, ilevel)
   !-----------------------------------------------
   call unsplit(uloc,gloc,flux,tmp,dx,dx,dx,dtnew(ilevel),ncache)
 
+  !--------------------------------------
+  ! Call hook
+  !--------------------------------------
+  call post_flux_hook(ind_grid, flux, ilevel)
+
   !------------------------------------------------
   ! Reset flux along direction at refined interface
   !------------------------------------------------
@@ -797,10 +802,5 @@ subroutine godfine1(ind_grid, ncache, ilevel)
 
   end do
   ! End loop over dimensions
-
-  !--------------------------------------
-  ! Call hook
-  !--------------------------------------
-  call post_flux_hook(ind_grid, flux, ilevel)
 
 end subroutine godfine1
