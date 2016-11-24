@@ -111,7 +111,7 @@ def nextOutput(nexti=None):
 
     prevPos = pos.copy()
 
-def nextOutputHist(nexti=None):
+def nextOutputHist(nexti=None, draw_cpus=True, draw_levels=False):
     global i, prevPos, cb, limitSet
 
     if nexti is not None and nexti >= 0:
@@ -150,7 +150,7 @@ def nextOutputHist(nexti=None):
     mask = ((pos[0, :] >= xmin) * (pos[0, :] < xmax) *
             (pos[1, :] >= ymin) * (pos[1, :] < ymax))
 
-    nbin = 2**4
+    nbin = 2**6
     H, ex, ey = np.histogram2d(*pos[:, :], bins=nbin, range=[[0, 1], [0, 1]])
     H = np.ma.array(H, mask=(H == 0))
     plt.pcolormesh(ex, ey, H.T,
@@ -159,22 +159,40 @@ def nextOutputHist(nexti=None):
     # ax.scatter(*pos[:, mask], c='blue')
 
     f = 1
-    cpuMap = np.zeros((f*nbin, f*nbin))
-    # Getting cpu map
-    for cpu in range(cpus.min(), cpus.max()+1):
-        mask = (cpus == cpu)
+    if draw_cpus:
+        cpuMap = np.zeros((f*nbin, f*nbin))
+        # Getting cpu map
+        for cpu in range(cpus.min(), cpus.max()+1):
+            mask = (cpus == cpu)
 
-        # get center of domain and annotate it
-        cx, cy = np.mean(pos[:, mask], axis=1)
-        plt.annotate(str(cpu), (cx, cy))
-        # get map for cpu
-        Hcpu, _, _ = np.histogram2d(*pos[:, mask], bins=f*cpuMap.shape[0], range=[[0, 1], [0, 1]])
-        tmparr = cpu*(Hcpu.flatten() > 0)
-        cpuMap += np.reshape(tmparr, Hcpu.shape)
+            # get center of domain and annotate it
+            cx, cy = np.mean(pos[:, mask], axis=1)
+            plt.annotate(str(cpu), (cx, cy))
+            # get map for cpu
+            Hcpu, _, _ = np.histogram2d(*pos[:, mask], bins=f*cpuMap.shape[0], range=[[0, 1], [0, 1]])
+            tmparr = cpu*(Hcpu.flatten() > 0)
+            cpuMap += np.reshape(tmparr, Hcpu.shape)
 
-    if cpus.min() < cpus.max():
-        plt.contour(cpuMap.T, extent=(ex[0], ex[-1], ey[0], ey[-1]),
-                    levels=list(range(cpus.min(), cpus.max())), alpha=0.5)
+        if cpus.min() < cpus.max():
+            plt.contour(cpuMap.T, extent=(ex[0], ex[-1], ey[0], ey[-1]),
+                        levels=list(range(cpus.min(), cpus.max())), alpha=0.5)
+
+    if draw_levels:
+        lvlMap = np.zeros((f*nbin, f*nbin))
+        # Getting cpu map
+        for l in range(lvl.min(), lvl.max()+1):
+            print(l)
+            mask = (lvl == l)
+
+            # get center of domain and annotate it
+            Hlvl, _, _ = np.histogram2d(*pos[:, mask], bins=f*lvlMap.shape[0], range=[[0, 1], [0, 1]])
+            tmparr = l*(Hlvl.flatten() > 0)
+            lvlMap += np.reshape(tmparr, Hlvl.shape)
+
+        if lvl.min() < lvl.max():
+            plt.contour(lvlMap.T, extent=(ex[0], ex[-1], ey[0], ey[-1]),
+                        levels=list(range(lvl.min(), lvl.max())), alpha=0.5)
+
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
     ax.grid('on')
