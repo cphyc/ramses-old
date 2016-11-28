@@ -4,8 +4,6 @@ import os
 import numpy as np
 from tqdm import tqdm
 
-from numba import jit
-
 def part2dens(particles):
     # Find levelmin and max
     lvlmin = None
