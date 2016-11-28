@@ -69,7 +69,7 @@ def oneOutput(output):
     r = pymses.RamsesOutput(ramsesdir, outputn, verbose=False)
 
     nbin = 2**7  # int(np.sqrt(map.map.shape[0]))
-    percell = 50
+    percell = 50./4
     vmin = 0
     vmax = 4
 
@@ -124,7 +124,7 @@ def oneOutput(output):
     # Particles
     ##########################################
     # Get them
-    _, pos, vel, mass, lvl = read_output(output)
+    _, pos, vel, mass, lvl, cpus = read_output(output)
     if prevpos is None:
         prevpos = pos.copy()
 
