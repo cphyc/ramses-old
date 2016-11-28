@@ -7,18 +7,22 @@ nrestart=0
 ncontrol=10
 nremap=10
 nsubcycle=10*1,
-tracer=.true.
-MC_tracer=.true.
 !debug=.true.
 !verbose=.true.
 !ordering='planar'
 /
 
+&TRACER_PARAMS
+tracer=.true.
+MC_tracer=.true.
+tracerfile='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_kh_lvl7_5percell'
+/
+
 &AMR_PARAMS
 levelmin=7
-levelmax=8
+levelmax=9
 ngridmax=9000
-npartmax=400000
+npartmax=1000000
 nexpand=1
 boxlen=1.0
 /
@@ -38,9 +42,9 @@ x_center=0.5
 /
 
 &OUTPUT_PARAMS
-foutput=1
+foutput=10
 noutput=1
-tout=1
+tout=2
 /
 
 &HYDRO_PARAMS

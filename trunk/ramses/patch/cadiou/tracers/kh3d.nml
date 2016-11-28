@@ -7,11 +7,15 @@ nrestart=0
 ncontrol=10
 nremap=10
 nsubcycle=10*1,
-tracer=.true.
-MC_tracer=.true.
 !debug=.true.
 !verbose=.true.
 !ordering='planar'
+/
+
+&TRACER_PARAMS
+tracer=.true.
+MC_tracer=.true.
+tracerfile='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_kh_lvl7_5percell_3d'
 /
 
 &AMR_PARAMS
