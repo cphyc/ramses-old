@@ -359,8 +359,8 @@ contains
 
           relLvl(dir) = neighborRelativeLevel(&
                ind_grid(j)+ncoarse+(ison-1)*ngridmax, &
-               ind_ngrid(j, 0:twotondim), &
-               ind_ncell(j, ison, 0:twotondim), &
+               ind_ngrid(j, 0:twondim), &
+               ind_ncell(j, ison, 0:twondim), &
                dir)
 
           if (relLvl(dir) == -1) then
@@ -638,8 +638,8 @@ contains
 
              do dir = 1, twondim
                 ! Only use outflux to same or coarser cells
-                relLvl(dir) = neighborRelativeLevel(icell, ind_ngrid(j, 0:twotondim), &
-                     ind_ncell(j, ison, 0:twotondim), dir)
+                relLvl(dir) = neighborRelativeLevel(icell, ind_ngrid(j, 0:twondim), &
+                     ind_ncell(j, ison, 0:twondim), dir)
 
                 call getFlux(dir, ix, iy, iz, j, fluxes, flux)
                 if (flux < 0) Fout = Fout + flux
