@@ -867,7 +867,7 @@ contains
     ! filename='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_tracers'
     if(myid==1)then
        open(10,file=trim(tracerfile),form='formatted')
-       print*, 'reading initial tracers from', trim(tracerfile)
+       print*, 'Reading initial tracers from', trim(tracerfile)
        indglob=0
     end if
     eof=.false.
@@ -886,11 +886,9 @@ contains
              vv(i,1)=vv1
              vv(i,2)=vv2
              vv(i,3)=vv3
-             ! W: the mass is set to 0d0, because they are tracer particles. The 'mass' of the particle is
-             ! tracked using the time
-             mm(i  )=0d0
-             tt(i  )=mm1
+             mm(i  )=mm1
              ii(i  )=indglob
+             ixx(i)=FTRACER
           end do
 100       continue
           if(jpart<nvector)eof=.true.
@@ -899,9 +897,9 @@ contains
 #ifndef WITHOUTMPI
        call MPI_BCAST(xx,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
        call MPI_BCAST(vv,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
-       call MPI_BCAST(tt,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
        call MPI_BCAST(mm,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
        call MPI_BCAST(ii,nvector  ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(ixx,nvector ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
        call MPI_BCAST(eof,1       ,MPI_LOGICAL         ,0,MPI_COMM_WORLD,info)
        call MPI_BCAST(jpart,1     ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
        call cmp_cpumap(xx,cc,jpart)
@@ -923,6 +921,7 @@ contains
              mp(ipart)    =mm(i) !TODO:checkme
              levelp(ipart)=levelmin
              idp(ipart)   =ii(i)
+             famp(ipart)  =ixx(i)
              ! write(*, '(i5, 3f8.5)') ipart, xp(ipart,:)
 #ifndef WITHOUTMPI
           endif
@@ -948,7 +947,7 @@ contains
     do icpu=2,ncpu
        npart_cpu(icpu)=npart_cpu(icpu-1)+npart_all(icpu)
     end do
-    if(debug)write(*,*)'npart=',npart,'/',npart_cpu(ncpu), '(tracers)'
+    write(*,*)'npart=',npart,'/',npart_cpu(ncpu), '(tracers)'
   end subroutine load_tracers
 
 end subroutine init_part
