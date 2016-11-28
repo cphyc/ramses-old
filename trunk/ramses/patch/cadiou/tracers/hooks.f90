@@ -2,7 +2,7 @@
 module hooks
   use amr_parameters      ! nx, ny, nz, dp, ngridmax, nvector, …
   use amr_commons         ! ncoarse, father, xg, son, myid, cpu_map, cpu_map2, ncpu, nbor
-  use pm_commons, only    : xp, tp, idp, levelp, headp, mp, localseed, numbp, nextp, move_flag
+  use pm_commons          ! xp, tp, idp, levelp, headp, mp, localseed, numbp, nextp, move_flag
   use random, only        : ranf
   use hydro_commons, only : uold, if1, if2, jf1, jf2, kf1, kf2, nvar
 
@@ -107,7 +107,7 @@ contains
           ipart = headp(igrid)
 
           do i = 1, numbp(igrid)
-             if (mp(ipart) == 0d0) then
+             if (famp(ipart) == FTRACER) then
                 if (ddebug) print*,'kill_grid', ipart, igrid
 
                 if (idp(ipart) == dbpart) print*, 'DEBUG: ', 'kill_grid'
@@ -205,7 +205,7 @@ contains
           mass(0) = sum(mass(1:twotondim))
 
           do i = 1, numbp(fgrid)
-             if (mp(ipart) == 0d0) then
+             if (famp(ipart) == FTRACER) then
 
                 ! Check whether the particle was in the refined cell
                 x(1:ndim) = cellCenter(ind, fgrid, dxcoarse)
@@ -458,7 +458,7 @@ contains
 
              ! For the tracer particles in the neighbor cell tagged for later move
              do i = 1, numbp(ind_ngrid_ncell)
-                if (mp(ipart) == 0d0 .and. move_flag(ipart) <= twotondim .and. &
+                if (famp(ipart) == FTRACER .and. move_flag(ipart) <= twotondim .and. &
                      all(x(1:ndim) == xp(ipart, 1:ndim))) then
 
                    ! Decide whether or not to move it depending on the total flux
@@ -504,7 +504,7 @@ contains
 
           prevxp(1:ndim) = xp(ipart, 1:ndim)
 
-          if (mp(ipart) == 0d0 .and. move_flag(ipart) == 0) then
+          if (famp(ipart) == FTRACER .and. move_flag(ipart) == 0) then
              ! Mark particle as treated
              move_flag(ipart) = twotondim + 1
 
