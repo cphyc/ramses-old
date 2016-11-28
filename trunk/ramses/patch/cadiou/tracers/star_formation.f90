@@ -372,6 +372,9 @@ subroutine star_formation(ilevel)
            vp(ind_part(i),2)=v
            vp(ind_part(i),3)=w
            if(metal)zp(ind_part(i))=zg  ! Initial star metallicity
+           !!! Add family !!!
+           famp(ind_part(i))=FSTAR
+           !!!!!!!!!!!!!!!!!!
 
            ! Set GMC particle variables
            if(f_w>0)then
@@ -394,6 +397,9 @@ subroutine star_formation(ilevel)
               vp(ind_debris(i),3)=w
               ! GMC metallicity + yield from ejecta 
               if(metal)zp(ind_debris(i))=zg+eta_sn*yield*(1-zg)*n*mstar/mdebris
+              !!! Add family !!!
+              famp(ind_debris(i))=FDEBRIS
+              !!!!!!!!!!!!!!!!!!
            endif
 
         end do

@@ -1249,7 +1249,12 @@ subroutine rho_only_level(ilevel)
               next_part=nextp(ipart)
               ! Select stars younger than age_cut_clfind
               if(age_cut_clfind>0.d0 .and. star) then
+                 !!! Add family !!!
                  if((t-tp(ipart).lt.age_cut_clfind).and.(tp(ipart).ne.0.d0)) then
+                 !if((t-tp(ipart).lt.age_cut_clfind).and.(famp(ipart)).eq.1) then
+                 ! Actually, the initial imlementation is probably better,
+                 ! since it excludes initial. However, seems to include sinks?
+                 !!!!!!!!!!!!!!!!!!
                     npart2=npart2+1
                  endif
               ! All particles
@@ -1272,7 +1277,10 @@ subroutine rho_only_level(ilevel)
               next_part=nextp(ipart)
               ! Select stars younger than age_cut_clfind
               if(age_cut_clfind>0.d0 .and. star) then
+                 !!! Add family !!!
                  if((t-tp(ipart).lt.age_cut_clfind).and.(tp(ipart).ne.0.d0)) then
+                 ! Keep initial implementation, see previous comment
+                 !!!!!!!!!!!!!!!!!!
                     if(ig==0)then
                        ig=1
                        ind_grid(ig)=igrid

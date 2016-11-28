@@ -74,7 +74,12 @@ subroutine backup_part(filename)
   do i=1,npartmax
      if(levelp(i)>0)then
         ipart=ipart+1
-        xdp(ipart)=mp(i)
+        if(famp(i)==FTRACER.and.MC_tracer) then
+           !TODO: actually use a mass
+           xdp(ipart)=1
+        else
+           xdp(ipart)=mp(i)
+        end if
      end if
   end do
   write(ilun)xdp
@@ -140,6 +145,18 @@ subroutine backup_part(filename)
      end if
      deallocate(xdp)
   end if
+  ! Add family !
+  allocate(ll(1:npart))
+  ipart=0
+  do i=1, npartmax
+     if(levelp(i)>0) then
+        ipart=ipart+1
+        ll(ipart)=famp(i)
+     end if
+  end do
+  write(ilun)ll
+  deallocate(ll)
+  !------------!
   close(ilun)
 
   ! Send the token

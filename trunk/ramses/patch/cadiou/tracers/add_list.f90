@@ -17,16 +17,13 @@ subroutine add_list(ind_part,list2,ok,np)
   do j=1,np
      if(ok(j))then
         if(numbp(list2(j))>0)then
-           if(debug)print*, ' %% append to list ', ind_part(j), list2(j)
            ! Add particle at the tail of its linked list
            nextp(tailp(list2(j)))=ind_part(j)
            prevp(ind_part(j))=tailp(list2(j))
            nextp(ind_part(j))=0
            tailp(list2(j))=ind_part(j)
            numbp(list2(j))=numbp(list2(j))+1
-
         else
-           if(debug)print*, ' %% initialize list', ind_part(j), list2(j)
            ! Initialise linked list
            headp(list2(j))=ind_part(j)
            tailp(list2(j))=ind_part(j)
@@ -64,6 +61,7 @@ subroutine add_free(ind_part,np)
      mp(ind_part(j))=0.0
      idp(ind_part(j))=0
      levelp(ind_part(j))=0
+     famp(ind_part(j))=FUNSET
   end do
   if(star.or.sink)then
      do j=1,np
@@ -113,7 +111,6 @@ subroutine add_free_cond(ind_part,ok,np)
   !
   integer::j,idim
 
-  print*, 'in add_free_cond'
   do idim=1,ndim
      do j=1,np
         if(ok(j))then
@@ -127,6 +124,7 @@ subroutine add_free_cond(ind_part,ok,np)
         mp(ind_part(j))=0.0
         idp(ind_part(j))=0
         levelp(ind_part(j))=0
+        famp(ind_part(j))=FUNSET
      endif
   end do
   if(star.or.sink)then

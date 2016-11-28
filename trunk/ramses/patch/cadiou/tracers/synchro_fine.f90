@@ -122,7 +122,12 @@ subroutine synchro_fine_static(ilevel)
            ! Save next particle   <--- Very important !!!
            next_part=nextp(ipart)
            if(star) then
+              !!! Add family !!!
               if((.not.static_dm.and.tp(ipart).eq.0).or.(.not.static_stars.and.tp(ipart).ne.0)) then
+              !rq: static_stars seems to force static sinks as well
+              !if((.not.static_dm.and.famp(ipart).eq.0).or.(.not.static_stars.and.famp(ipart).ne.0)) then
+              ! Keep initial implementation: initial stars are like DM?
+              !!!!!!!!!!!!!!!!!!
                  npart2=npart2+1
               endif
            else
@@ -145,7 +150,11 @@ subroutine synchro_fine_static(ilevel)
            next_part=nextp(ipart)
            ! Select particles
            if(star) then
+              !!! Add family !!!
               if((.not.static_dm.and.tp(ipart).eq.0).or.(.not.static_stars.and.tp(ipart).ne.0)) then
+              !if((.not.static_dm.and.famp(ipart).eq.0).or.(.not.static_stars.and.famp(ipart).ne.0)) then
+              ! Keep initial implementation: initial stars are like DM?
+              !!!!!!!!!!!!!!!!!!
                  if(ig==0)then
                     ig=1
                     ind_grid(ig)=igrid

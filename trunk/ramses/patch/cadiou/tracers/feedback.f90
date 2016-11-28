@@ -42,7 +42,9 @@ subroutine thermal_feedback(ilevel)
            do jpart=1,npart1
               ! Save next particle   <--- Very important !!!
               next_part=nextp(ipart)
-              if(idp(ipart).gt.0.and.tp(ipart).ne.0)then
+              !!! FAMILY !!!
+              if(famp(ipart)==FSTAR.and.tp(ipart)/=0)then
+              !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                  npart2=npart2+1
               endif
               ipart=next_part  ! Go to next particle
@@ -59,7 +61,9 @@ subroutine thermal_feedback(ilevel)
               ! Save next particle   <--- Very important !!!
               next_part=nextp(ipart)
               ! Select only star particles
-              if(idp(ipart).gt.0.and.tp(ipart).ne.0)then
+              !!! FAMILY !!!
+              if (famp(ipart)==FSTAR.and.tp(ipart)/=0) then
+              !!!!!!!!!!!!!!
                  if(ig==0)then
                     ig=1
                     ind_grid(ig)=igrid
@@ -460,7 +464,10 @@ subroutine kinetic_feedback
            do jpart=1,npart1
               ! Save next particle   <--- Very important !!!
               next_part=nextp(ipart)
-              if(idp(ipart).le.0.and. tp(ipart).lt.(current_time-t0))then
+              !!! Add family !!!
+              if(famp(ipart)==FDEBRIS .and. tp(ipart)<(current_time-t0))then
+              ! We look only at debris particles
+              !!!!!!!!!!!!!!!!!!
                  npart2=npart2+1
               endif
               ipart=next_part  ! Go to next particle
@@ -520,7 +527,9 @@ subroutine kinetic_feedback
            do jpart=1,npart1
               ! Save next particle   <--- Very important !!!
               next_part=nextp(ipart)
-              if(idp(ipart).le.0.and. tp(ipart).lt.(current_time-t0))then
+              !!! Add family !!!
+              if(famp(ipart)==FDEBRIS .and. tp(ipart)<(current_time-t0))then
+              !!!!!!!!!!!!!!!!!!
                  iSN=iSN+1
                  xSN(iSN,1)=xp(ipart,1)
                  xSN(iSN,2)=xp(ipart,2)

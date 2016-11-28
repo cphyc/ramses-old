@@ -96,10 +96,14 @@ subroutine init_part
         allocate(zp(npartmax))
         zp=0.0
      end if
-     allocate(move_flag(npartmax))
-     if(MC_tracer) move_flag = .true.
-
+     if(MC_tracer) then
+        allocate(move_flag(npartmax))
+        move_flag = .true.
+     end if
   end if
+
+  allocate(famp(npartmax))
+  famp=FUNSET
 
   !--------------------
   ! Read part.tmp file
@@ -190,6 +194,12 @@ subroutine init_part
         end if
         deallocate(xdp)
      end if
+     !!! Add family !!!
+     allocate(isp(1:npart2))
+     read(ilun)isp
+     famp(1:npart2)=isp
+     deallocate(isp)
+     !!!!!!!!!!!!!!!!!!
      close(ilun)
 
      ! Send the token
@@ -252,6 +262,8 @@ contains
     !----------------------------------------------------
     ! Reading initial conditions GRAFIC2 multigrid arrays
     !----------------------------------------------------
+    print*, 'Family not implemented, stopping.'
+    stop
     ipart=0
     ! Loop over initial condition levels
     do ilevel=levelmin,nlevelmax
@@ -723,6 +735,11 @@ contains
        end do
     end if
 
+    ! Set initial family to 'unset'
+    do ipart=1, npart
+       famp(ipart)=FUNSET
+    end do
+
     ! Compute particle initial identity
     npart_cpu=0; npart_all=0
     npart_cpu(myid)=npart
@@ -755,7 +772,7 @@ contains
     ! Local particle count
     ipart=0
 
-    if(TRIM(initfile(levelmin)).NE.' ')then
+    if(trim(initfile(levelmin)).ne.' ')then
 
        filename=TRIM(initfile(levelmin))//'/ic_part'
        if(myid==1)then
@@ -847,76 +864,72 @@ contains
     ! is the particle number 'npart'
     ipart=npart
 
-    ! print*, 'MC-TRACERS0------------------',initfile(8)
-    ! if(TRIM(initfile(levelmin)).NE.' ')then
-    !    print*, 'MC-TRACERS-------------------',MC_tracer
+    filename='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_tracers'
+    if(myid==1)then
+       open(10,file=filename,form='formatted')
+       indglob=0
+    end if
+    eof=.false.
 
-       filename='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_tracers'
+    do while (.not.eof)
+       xx=0.0
        if(myid==1)then
-          open(10,file=filename,form='formatted')
-          indglob=0
-       end if
-       eof=.false.
-
-       do while (.not.eof)
-          xx=0.0
-          if(myid==1)then
-             jpart=0
-             do i=1,nvector
-                read(10,*,end=100)xx1,xx2,xx3,vv1,vv2,vv3,mm1
-                jpart=jpart+1
-                indglob=indglob+1
-                xx(i,1)=xx1 !+boxlen/2.0
-                xx(i,2)=xx2 !+boxlen/2.0
-                xx(i,3)=xx3 !+boxlen/2.0
-                vv(i,1)=vv1
-                vv(i,2)=vv2
-                vv(i,3)=vv3
-                ! W: the mass is set to 0d0, because they are tracer particles. The 'mass' of the particle is
-                ! tracked using the time
-                mm(i  )=0d0
-                tt(i  )=mm1
-                ii(i  )=indglob
-             end do
-100          continue
-             if(jpart<nvector)eof=.true.
-          endif
-          buf_count=nvector*3
+          jpart=0
+          do i=1,nvector
+             read(10,*,end=100)xx1,xx2,xx3,vv1,vv2,vv3,mm1
+             jpart=jpart+1
+             indglob=indglob+1
+             xx(i,1)=xx1 !+boxlen/2.0
+             xx(i,2)=xx2 !+boxlen/2.0
+             xx(i,3)=xx3 !+boxlen/2.0
+             vv(i,1)=vv1
+             vv(i,2)=vv2
+             vv(i,3)=vv3
+             ! W: the mass is set to 0d0, because they are tracer particles. The 'mass' of the particle is
+             ! tracked using the time
+             mm(i  )=0d0
+             tt(i  )=mm1
+             ii(i  )=indglob
+          end do
+100       continue
+          if(jpart<nvector)eof=.true.
+       endif
+       buf_count=nvector*3
 #ifndef WITHOUTMPI
-          call MPI_BCAST(xx,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
-          call MPI_BCAST(vv,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
-          call MPI_BCAST(tt,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
-          call MPI_BCAST(mm,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
-          call MPI_BCAST(ii,nvector  ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
-          call MPI_BCAST(eof,1       ,MPI_LOGICAL         ,0,MPI_COMM_WORLD,info)
-          call MPI_BCAST(jpart,1     ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
-          call cmp_cpumap(xx,cc,jpart)
+       call MPI_BCAST(xx,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(vv,buf_count,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(tt,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(mm,nvector  ,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(ii,nvector  ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(eof,1       ,MPI_LOGICAL         ,0,MPI_COMM_WORLD,info)
+       call MPI_BCAST(jpart,1     ,MPI_INTEGER         ,0,MPI_COMM_WORLD,info)
+       call cmp_cpumap(xx,cc,jpart)
 #endif
 
-          do i=1,jpart
+       do i=1,jpart
 #ifndef WITHOUTMPI
-             if(cc(i)==myid)then
+          if(cc(i)==myid)then
 #endif
-                ipart=ipart+1
-                if(ipart>npartmax)then
-                   write(*,*)'Maximum number of particles incorrect'
-                   write(*,*)'npartmax should be greater than',ipart, 'got', npartmax
-                   call clean_stop
-                endif
-                xp(ipart,:)=xx(i,:)
-                vp(ipart,:)=vv(i,:)
-                ! TODO tp(ipart)    =tt(i)
-                mp(ipart)    =mm(i) !TODO:checkme
-                levelp(ipart)=levelmin
-                idp(ipart)   =ii(i)
-                ! write(*, '(i5, 3f8.5)') ipart, xp(ipart,:)
-#ifndef WITHOUTMPI
+             ipart=ipart+1
+             if(ipart>npartmax)then
+                write(*,*)'Maximum number of particles incorrect'
+                write(*,*)'npartmax should be greater than',ipart, 'got', npartmax
+                call clean_stop
              endif
+             xp(ipart,:)=xx(i,:)
+             vp(ipart,:)=vv(i,:)
+             ! TODO tp(ipart)    =tt(i)
+             mp(ipart)    =mm(i) !TODO:checkme
+             levelp(ipart)=levelmin
+             idp(ipart)   =ii(i)
+             ! write(*, '(i5, 3f8.5)') ipart, xp(ipart,:)
+#ifndef WITHOUTMPI
+          endif
 #endif
-          enddo
+       enddo
 
-       end do
-       if(myid==1)close(10)
+    end do
+    if(myid==1)close(10)
     ! end if
     npart=ipart
 
@@ -968,6 +981,9 @@ subroutine load_gadget
   integer :: clock_start, clock_end, clock_rate
   integer :: mpi_cs, mpi_ce
   real:: gadgetvfact
+
+  print*, 'Family not implemented, stopping.'
+  stop
   ! Local particle count
   ipart=0
   call SYSTEM_CLOCK(COUNT_RATE=clock_rate)

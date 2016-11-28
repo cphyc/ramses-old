@@ -47,6 +47,22 @@ module pm_commons
   real(dp),allocatable,dimension(:)  ::tp        ! Birth epoch
   real(dp),allocatable,dimension(:,:)::weightp   ! weight of cloud parts for sink accretion only
   real(dp),allocatable,dimension(:)  ::zp        ! Birth metallicity
+  !!! Add particle family !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  integer ,allocatable,dimension(:)  ::famp      ! Particle family
+  integer, parameter :: FDM=0, FSTAR=1, FDEBRIS=-1, FAMSINK=2, FTRACER=3, FUNSET=-2
+  ! Note on the values for the family:
+  !---------------------------!
+  !  Particle type  !  Value  !
+  !-----------------+---------!
+  !        DM       !     0   !
+  !       Star      !     1   !
+  !      Debris     !    -1   !
+  !       Sink      !     2   !
+  !    Tracer (?)   !     3   !
+  !      Unset      !    -2   !
+  !      Other      !   ...   !
+  !---------------------------!
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   integer ,allocatable,dimension(:)  ::nextp     ! Next particle in list
   integer ,allocatable,dimension(:)  ::prevp     ! Previous particle in list
   integer ,allocatable,dimension(:)  ::levelp    ! Current level of particle
@@ -55,13 +71,10 @@ module pm_commons
   integer ,allocatable,dimension(:)   ::headp    ! Head particle in grid
   integer ,allocatable,dimension(:)   ::tailp    ! Tail particle in grid
   integer ,allocatable,dimension(:)   ::numbp    ! Number of particles in grid
-  integer ,allocatable,dimension(:, :)::numbtout ! Number of tracers in grid going out in direction
-  integer ,allocatable,dimension(:, :)::headtout ! Head particle going out in direction
   ! Global particle linked lists
   integer::headp_free,tailp_free,numbp_free=0,numbp_free_tot=0
   ! Local and current seed for random number generator
   integer,dimension(IRandNumSize) :: localseed=-1
-
 
   contains
   function cross(a,b)

@@ -531,6 +531,9 @@ subroutine output_header(filename)
            write(ilun,'(a)',advance='no')'metal '
         endif
      endif
+     !!! Add family fields !!!
+     write(ilun,'(a)',advance='no')'family '
+     !!!!!!!!!!!!!!!!!!!!!!!!!
      close(ilun)
 
   endif

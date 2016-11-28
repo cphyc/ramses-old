@@ -36,7 +36,7 @@ subroutine move_fine(ilevel)
               ig=1
               ind_grid(ig)=igrid
            end if
-           if (MC_tracer .and. mp(ipart) == 0d0) then
+           if (MC_tracer .and. famp(ipart)==FTRACER) then
               ! Skip tracer particles
            else
               ip=ip+1
@@ -104,7 +104,11 @@ subroutine move_fine_static(ilevel)
            ! Save next particle   <--- Very important !!!
            next_part=nextp(ipart)
            if(star) then
+              !!! Add family !!!
               if((.not.static_dm.and.tp(ipart).eq.0).or.(.not.static_stars.and.tp(ipart).ne.0)) then
+              !if((.not.static_dm.and.famp(ipart).eq.0).or.(.not.static_stars.and.famp(ipart).ne.0)) then
+              ! Keep initial implementation, but weird (initial stars count as DM)
+              !!!!!!!!!!!!!!!!!!
                  npart2=npart2+1
               endif
            else
@@ -127,7 +131,11 @@ subroutine move_fine_static(ilevel)
            next_part=nextp(ipart)
            ! Select particles
            if(star) then
+              !!! Add family !!!
               if((.not.static_dm.and.tp(ipart).eq.0).or.(.not.static_stars.and.tp(ipart).ne.0)) then
+              !if((.not.static_dm.and.famp(ipart).eq.0).or.(.not.static_stars.and.famp(ipart).ne.0)) then
+              ! Keep initial implementation, but weird (initial stars count as DM)
+              !!!!!!!!!!!!!!!!!!
                  if(ig==0)then
                     ig=1
                     ind_grid(ig)=igrid
@@ -403,7 +411,6 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         if(ok(j))then
            indp(j,ind)=ncoarse+(icell(j,ind)-1)*ngridmax+igrid(j,ind)
         else
-           print*, ind_part(j)
            indp(j,ind)=nbors_father_cells(ind_grid_part(j),icell(j,ind))
         end if
      end do
@@ -504,13 +511,7 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         end do
      else
         do j=1,np
-           if (MC_tracer .and. mp(ind_part(j)) == 0d0) then
-              ! do nothing, already moved in godunov file
-              print*, '-------------------------- Skipping part!'
-              new_xp(j,idim)=xp(ind_part(j),idim)
-           else
-              new_xp(j,idim)=xp(ind_part(j),idim)+new_vp(j,idim)*dtnew(ilevel)
-           end if
+           new_xp(j,idim)=xp(ind_part(j),idim)+new_vp(j,idim)*dtnew(ilevel)
         end do
      endif
   end do

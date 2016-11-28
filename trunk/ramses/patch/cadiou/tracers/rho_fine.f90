@@ -344,7 +344,7 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
   ! Particle-based arrays
   logical ,dimension(1:nvector),save::ok
   real(dp),dimension(1:nvector),save::mmm
-  real(dp),dimension(1:nvector),save::ttt=0d0
+  integer,dimension(1:nvector),save ::fff
   real(dp),dimension(1:nvector),save::vol2
   real(dp),dimension(1:nvector,1:ndim),save::x,dd,dg
   integer ,dimension(1:nvector,1:ndim),save::ig,id,igg,igd,icg,icd
@@ -401,11 +401,13 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
   end if
 
   ! Gather particle birth epoch
-  if(star)then
+  !!! Add family !!!
+  if(star) then
      do j=1,np
-        ttt(j)=tp(ind_part(j))
+        fff(j)=famp(ind_part(j))
      end do
-  endif
+  end if
+  !!!!!!!!!!!!!!!!!!
 
   ! Check for illegal moves
   error=.false.
@@ -564,7 +566,9 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
         end do
      else if(ilevel>cic_levelmax)then
         do j=1,np
-           if(ok(j).and.ttt(j).ne.0d0)then
+           !!! Add family !!!
+           if(ok(j).and.fff(j)/=FDM.and.fff(j)/=FTRACER)then
+           !!!!!!!!!!!!!!!!!!
               rho(indp(j,ind))=rho(indp(j,ind))+vol2(j)
            end if
         end do
@@ -572,7 +576,9 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
 
      if(ilevel==cic_levelmax)then
         do j=1,np
-           if(ok(j).and.ttt(j)==0d0)then
+           !!! Add family !!!
+           if(ok(j).and.fff(j)==FDM)then
+           !!!!!!!!!!!!!!!!!!
               rho_top(indp(j,ind))=rho_top(indp(j,ind))+vol2(j)
            end if
         end do
@@ -592,7 +598,9 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
      ! Remove massive dark matter particle
      if(mass_cut_refine>0.0)then
         do j=1,np
-           if(ttt(j)==0d0)then
+           !!! Add family !!!
+           if(fff(j)==FDM)then
+           !!!!!!!!!!!!!!!!!!
               ok(j)=ok(j).and.mmm(j)<mass_cut_refine
            endif
         end do
@@ -601,7 +609,9 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
      ! For low mass baryon particles
      if(star)then
         do j=1,np
-           if(ttt(j).ne.0.0)then
+           !!! Add family !!!
+           if(fff(j)/=FDM.and.fff(j)/=FTRACER)then
+           !!!!!!!!!!!!!!!!!!
               vol2(j)=vol2(j)*mmm(j)/mass_sph
            endif
         end do
@@ -615,7 +625,9 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
         end do
      else if(ilevel>=cic_levelmax)then
         do j=1,np
-           if(ok(j).and.ttt(j).ne.0d0)then
+           !!! Add family !!!
+           if(ok(j).and.fff(j)/=FDM.and.fff(j)/=FTRACER)then
+           !!!!!!!!!!!!!!!!!!
               phi(indp(j,ind))=phi(indp(j,ind))+vol2(j)
            end if
         end do
@@ -625,8 +637,10 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
      ! by setting particle number density above m_refine(ilevel)
      if(sink_refine)then
         do j=1,np
-           if(idp(ind_part(j))<0.)then
-              ! if (direct_force_sink(-1*idp(ind_part(j))))then                     
+           !!! Add family !!!
+           if(famp(ind_part(j))==FAMSINK)then
+           !!!!!!!!!!!!!!!!!!
+              ! if (direct_force_sink(-1*idp(ind_part(j))))then
               phi(indp(j,ind))=phi(indp(j,ind))+m_refine(ilevel)
               ! endif
            end if
@@ -1147,7 +1161,7 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
   ! Particle-based arrays
   logical ,dimension(1:nvector),save::ok,abandoned
   real(dp),dimension(1:nvector),save::mmm
-  real(dp),dimension(1:nvector),save::ttt=0d0
+  integer, dimension(1:nvector),save::fff=0
   real(dp),dimension(1:nvector),save::vol2
   real(dp),dimension(1:nvector,1:ndim),save::x,cl,cr,cc,wl,wr,wc
   integer ,dimension(1:nvector,1:ndim),save::igl,igr,igc,icl,icr,icc
@@ -1212,7 +1226,9 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
   ! Gather particle birth epoch
   if(star)then
      do j=1,np
-        ttt(j)=tp(ind_part(j))
+        !!! Add family !!!
+        fff(j)=famp(ind_part(j))
+        !!!!!!!!!!!!!!!!!!
      end do
   endif
 
@@ -1399,7 +1415,9 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
         end do
      else if(ilevel>cic_levelmax) then
         do j=1,np
-           if(ok(j).and.(ttt(j).ne.0d0).and.(.not.abandoned(j))) then
+           !!! Add family !!!
+           if(ok(j).and.(fff(j)/=FDM).and.(.not.abandoned(j))) then
+           !!!!!!!!!!!!!!!!!!
               rho(indp(j,ind))=rho(indp(j,ind))+vol2(j)
            end if
         end do
@@ -1407,7 +1425,9 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
 
      if(ilevel==cic_levelmax)then
         do j=1,np
-           if(ok(j).and.(ttt(j)==0d0).and.(.not.abandoned(j)))then
+           !!! Add family !!!
+           if(ok(j).and.(fff(j)==FDM).and.(.not.abandoned(j)))then
+           !!!!!!!!!!!!!!!!!!
               rho_top(indp(j,ind))=rho_top(indp(j,ind))+vol2(j)
            end if
         end do
@@ -1431,7 +1451,9 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
      ! Remove massive dark matter particle
      if(mass_cut_refine>0.0) then
         do j=1,np
-           if(ttt(j)==0d0.and.(.not.abandoned(j))) then
+           !!! Add family !!!
+           if(fff(j)==FDM.and.(.not.abandoned(j))) then
+           !!!!!!!!!!!!!!!!!!
               ok(j)=ok(j).and.mmm(j)<mass_cut_refine
            endif
         end do
@@ -1440,7 +1462,9 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
      ! For low mass baryon particles
      if(star) then
         do j=1,np
-           if(ttt(j).ne.0.0.and.(.not.abandoned(j))) then
+           !!! Add family !!!
+           if(fff(j)/=FDM.and.fff(j)/=FTRACER.and.(.not.abandoned(j))) then
+           !!!!!!!!!!!!!!!!!!
               vol2(j)=vol2(j)*mmm(j)/mass_sph
            endif
         end do
@@ -1454,7 +1478,9 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
         end do
      else if(ilevel>=cic_levelmax) then
         do j=1,np
-           if(ok(j).and.(ttt(j).ne.0d0).and.(.not.abandoned(j))) then
+           !!! Add family !!!
+           if(ok(j).and.(fff(j)/=FDM.and.fff(j)/=FTRACER).and.(.not.abandoned(j))) then
+           !!!!!!!!!!!!!!!!!!
               phi(indp(j,ind))=phi(indp(j,ind))+vol2(j)
            end if
         end do

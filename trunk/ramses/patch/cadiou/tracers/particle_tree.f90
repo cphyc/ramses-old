@@ -10,7 +10,7 @@ subroutine init_tree
   include 'mpif.h'
 #endif
   !------------------------------------------------------
-  ! This subroutine build the particle linked list at the 
+  ! This subroutine build the particle linked list at the
   ! coarse level for ALL the particles in the box.
   ! This routine should be used only as initial set up for
   ! the particle tree.
@@ -86,14 +86,12 @@ subroutine init_tree
   ! Reset all linked lists at level 1
   !----------------------------------
   do i=1,active(1)%ngrid
-     if(debug) print*, ' %% reset list', active(1)%igrid(i)
      headp(active(1)%igrid(i))=0
      tailp(active(1)%igrid(i))=0
      numbp(active(1)%igrid(i))=0
   end do
   do icpu=1,ncpu
      do i=1,reception(icpu,1)%ngrid
-        if(debug) print*, ' %% reset list', reception(icpu,1)%igrid(i)
         headp(reception(icpu,1)%igrid(i))=0
         tailp(reception(icpu,1)%igrid(i))=0
         numbp(reception(icpu,1)%igrid(i))=0
@@ -396,14 +394,12 @@ subroutine kill_tree_fine(ilevel)
 
   ! Reset all linked lists at level ilevel+1
   do i=1,active(ilevel+1)%ngrid
-     if(debug) print*, ' %% reset list', active(ilevel+1)%igrid(i)
      headp(active(ilevel+1)%igrid(i))=0
      tailp(active(ilevel+1)%igrid(i))=0
      numbp(active(ilevel+1)%igrid(i))=0
   end do
   do icpu=1,ncpu
      do i=1,reception(icpu,ilevel+1)%ngrid
-        if(debug) print*, ' %% reset list', reception(icpu,ilevel+1)%igrid(i)
         headp(reception(icpu,ilevel+1)%igrid(i))=0
         tailp(reception(icpu,ilevel+1)%igrid(i))=0
         numbp(reception(icpu,ilevel+1)%igrid(i))=0
@@ -594,8 +590,6 @@ subroutine merge_tree_fine(ilevel)
            do i=1,ngrid
            if(ok(i))then
            if(numbp(ind_grid_son(i))>0)then
-              if(debug) print*, ' %% merge list', ind_grid(i), ind_grid_son(i)
-
               if(numbp(ind_grid(i))>0)then
                  ! Connect son linked list at the tail of father linked list
                  nextp(tailp(ind_grid(i)))=headp(ind_grid_son(i))
@@ -677,6 +671,9 @@ subroutine virtual_tree_fine(ilevel)
         particle_data_width=twondim+2
      endif
   endif
+  !!! Add family !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  particle_data_width=particle_data_width+1
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 #ifdef OUTPUT_PARTICLE_POTENTIAL
   particle_data_width=particle_data_width+1
@@ -888,20 +885,24 @@ subroutine fill_comm(ind_part,ind_com,ind_list,np,ilevel,icpu)
      do i=1,np
         reception(icpu,ilevel)%up(ind_com(i),current_property)=tp(ind_part(i))
      end do
+     current_property = current_property + 1
      if(metal)then
         do i=1,np
-           reception(icpu,ilevel)%up(ind_com(i),current_property+1)=zp(ind_part(i))
+           reception(icpu,ilevel)%up(ind_com(i),current_property)=zp(ind_part(i))
         end do
+        current_property = current_property + 1
      end if
   end if
+  !!! Add family !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  do i=1,np
+     reception(icpu,ilevel)%up(ind_com(i),current_property)=famp(ind_part(i))
+  end do
+  current_property = current_property + 1
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  ! following line is not strictly necessary, but in case one adds extra data later
-  current_property = current_property + 2 
-  
   ! Remove particles from parent linked list
   call remove_list(ind_part,ind_list,ok,np)
   call add_free(ind_part,np)
-  
 end subroutine fill_comm
 !################################################################
 !################################################################
@@ -964,16 +965,20 @@ subroutine empty_comm(ind_com,np,ilevel,icpu)
      do i=1,np
         tp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
      end do
+     current_property = current_property+1
      if(metal)then
         do i=1,np
-           zp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property+1)
+           zp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
         end do
+        current_property = current_property+1
      end if
   end if
-
-  ! As with the gather routine, we leave this in case extra properties are
-  ! added later:
-  current_property = current_property+2
+  !!! Add family !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  do i=1,np
+     famp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
+  end do
+  current_property = current_property+1
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 end subroutine empty_comm
 !################################################################
