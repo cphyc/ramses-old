@@ -26,7 +26,7 @@ subroutine read_params
   namelist/run_params/clumpfind,cosmo,pic,sink,lightcone,poisson,hydro,rt,verbose,debug &
        & ,nrestart,ncontrol,nstepmax,nsubcycle,nremap,ordering &
        & ,bisec_tol,static,geom,overload,cost_weighting,aton,nrestart_quad,restart_remap &
-       & ,static_dm,static_gas,static_stars,MC_tracer,tracer
+       & ,static_dm,static_gas,static_stars
   namelist/output_params/noutput,foutput,fbackup,aout,tout,output_mode &
        & ,tend,delta_tout,aend,delta_aout,gadget_output
   namelist/amr_params/levelmin,levelmax,ngridmax,ngridtot &
@@ -39,7 +39,7 @@ subroutine read_params
        & ,deltax_frame,deltay_frame,deltaz_frame,movie,zoom_only &
        & ,imovout,imov,tendmov,aendmov,proj_axis,movie_vars,movie_vars_txt &
        & ,theta_camera,phi_camera,dtheta_camera,dphi_camera,focal_camera,perspective_camera
-
+  namelist/tracer_params/MC_tracer,tracer,tracerfile
   ! MPI initialization
 #ifndef WITHOUTMPI
   call MPI_INIT(ierr)
@@ -140,6 +140,8 @@ subroutine read_params
   read(1,NML=output_params)
   rewind(1)
   read(1,NML=amr_params)
+  rewind(1)
+  read(1,NML=tracer_params)
   rewind(1)
   read(1,NML=lightcone_params,END=83)
 83 continue

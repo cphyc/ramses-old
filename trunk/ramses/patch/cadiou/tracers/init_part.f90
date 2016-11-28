@@ -864,9 +864,10 @@ contains
     ! is the particle number 'npart'
     ipart=npart
 
-    filename='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_tracers'
+    ! filename='/automnt/data74/cadiou/work/ramses_tracer/dev/ic_tracers'
     if(myid==1)then
-       open(10,file=filename,form='formatted')
+       open(10,file=trim(tracerfile),form='formatted')
+       print*, 'reading initial tracers from', trim(tracerfile)
        indglob=0
     end if
     eof=.false.

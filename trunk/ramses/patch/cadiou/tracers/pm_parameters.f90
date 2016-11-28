@@ -51,4 +51,7 @@ module pm_parameters
   real(dp)::mass_halo_AGN=1.d10              ! Minimum mass of the halo for sink creation
   real(dp)::mass_clump_AGN=1.d10             ! Minimum mass of the clump for sink creation
 
+  ! MC Tracer patch !
+  character(LEN=256)::tracerfile
+  !-----------------!
 end module pm_parameters
